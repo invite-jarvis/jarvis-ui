@@ -2067,3 +2067,26 @@ body {
   width: 20px;
   height: 20px;
 }
+
+.setup-folder-info {
+  background: var(--input-bg);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.setup-folder-info p {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+}
+
+.setup-folder-info code {
+  display: block;
+  background: var(--bg-color);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--accent-color, #10a37f);
+}

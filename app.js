@@ -270,6 +270,12 @@ class ClawGPT {
     
     modal.classList.add('open');
     this.initSetupWizard();
+    
+    // Show the target folder path
+    const folderEl = document.getElementById('setupTargetFolder');
+    if (folderEl) {
+      folderEl.textContent = this.detectClawGPTFolder();
+    }
   }
   
   initSetupWizard() {
