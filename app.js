@@ -734,7 +734,8 @@ class ClawGPT {
   onInputChange() {
     const hasText = this.elements.messageInput.value.trim().length > 0;
     const hasImages = this.pendingImages && this.pendingImages.length > 0;
-    this.elements.sendBtn.disabled = (!hasText && !hasImages) || !this.connected;
+    const hasTextFiles = this.pendingTextFiles && this.pendingTextFiles.length > 0;
+    this.elements.sendBtn.disabled = (!hasText && !hasImages && !hasTextFiles) || !this.connected;
 
     // Auto-resize textarea
     this.elements.messageInput.style.height = 'auto';
@@ -2042,6 +2043,17 @@ Example: [0, 2, 5]`;
           ).join('')}</div>`
         : '';
       
+      // Render text files if present
+      const textFilesHtml = msg.textFiles && msg.textFiles.length > 0
+        ? `<div class="message-text-files">${msg.textFiles.map(f => {
+            const ext = f.name.split('.').pop()?.toLowerCase() || 'txt';
+            return `<div class="message-text-file" title="${this.escapeHtml(f.name)}">
+              <span class="message-text-file-icon">${this.getFileIcon(ext)}</span>
+              <span>${this.escapeHtml(f.name)}</span>
+            </div>`;
+          }).join('')}</div>`
+        : '';
+      
       return `
         <div class="message ${msg.role}" data-idx="${originalIdx}">
           <div class="message-header">
@@ -2049,6 +2061,7 @@ Example: [0, 2, 5]`;
             <span class="message-role">${isUser ? 'You' : 'ClawGPT'}</span>
           </div>
           ${imagesHtml}
+          ${textFilesHtml}
           <div class="message-content">${this.formatContent(msg.content)}</div>
           <div class="message-actions">
             <button class="msg-action-btn copy-btn" title="Copy">${copyIcon}</button>
@@ -2678,19 +2691,20 @@ Example: [0, 2, 5]`;
   // Image Upload
   initImageUpload() {
     this.pendingImages = [];
+    this.pendingTextFiles = [];
     
     const attachBtn = document.getElementById('attachBtn');
-    const imageInput = document.getElementById('imageInput');
+    const fileInput = document.getElementById('fileInput');
     const imagePreview = document.getElementById('imagePreview');
     
-    if (!attachBtn || !imageInput) return;
+    if (!attachBtn || !fileInput) return;
     
     // Click attach button opens file picker
-    attachBtn.addEventListener('click', () => imageInput.click());
+    attachBtn.addEventListener('click', () => fileInput.click());
     
     // Handle file selection
-    imageInput.addEventListener('change', (e) => {
-      this.handleImageFiles(e.target.files);
+    fileInput.addEventListener('change', (e) => {
+      this.handleFiles(e.target.files);
       e.target.value = ''; // Reset so same file can be selected again
     });
     
@@ -2700,7 +2714,7 @@ Example: [0, 2, 5]`;
       // Create drag overlay
       const overlay = document.createElement('div');
       overlay.className = 'drag-overlay';
-      overlay.innerHTML = '<div class="drag-overlay-text">Drop images here</div>';
+      overlay.innerHTML = '<div class="drag-overlay-text">Drop files here</div>';
       document.body.appendChild(overlay);
       
       dropZone.addEventListener('dragover', (e) => {
@@ -2717,10 +2731,7 @@ Example: [0, 2, 5]`;
       dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         overlay.classList.remove('active');
-        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-        if (files.length) {
-          this.handleImageFiles(files);
-        }
+        this.handleFiles(e.dataTransfer.files);
       });
       
       overlay.addEventListener('dragleave', () => {
@@ -2730,10 +2741,7 @@ Example: [0, 2, 5]`;
       overlay.addEventListener('drop', (e) => {
         e.preventDefault();
         overlay.classList.remove('active');
-        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-        if (files.length) {
-          this.handleImageFiles(files);
-        }
+        this.handleFiles(e.dataTransfer.files);
       });
     }
     
@@ -2745,46 +2753,131 @@ Example: [0, 2, 5]`;
       if (imageItems.length > 0) {
         e.preventDefault();
         const files = imageItems.map(item => item.getAsFile()).filter(Boolean);
-        this.handleImageFiles(files);
+        this.handleFiles(files);
       }
     });
   }
   
-  async handleImageFiles(files) {
-    const imagePreview = document.getElementById('imagePreview');
-    
+  // Text file extensions we support
+  isTextFile(file) {
+    const textExtensions = ['.txt', '.md', '.json', '.js', '.ts', '.py', '.html', '.css', '.xml', '.yaml', '.yml', '.csv', '.log', '.sh', '.bash', '.zsh', '.env', '.ini', '.conf', '.cfg'];
+    const name = file.name.toLowerCase();
+    return textExtensions.some(ext => name.endsWith(ext)) || file.type.startsWith('text/');
+  }
+  
+  async handleFiles(files) {
     for (const file of files) {
-      if (!file.type.startsWith('image/')) continue;
-      
-      // Convert to base64
-      const base64 = await this.fileToBase64(file);
-      const imageData = {
-        id: Date.now() + Math.random(),
-        base64,
-        mimeType: file.type,
-        name: file.name
-      };
-      
-      this.pendingImages.push(imageData);
-      
-      // Add preview
-      const item = document.createElement('div');
-      item.className = 'image-preview-item';
-      item.dataset.imageId = imageData.id;
-      item.innerHTML = `
-        <img src="${base64}" alt="${file.name}">
-        <button class="remove-image" title="Remove">×</button>
-      `;
-      
-      item.querySelector('.remove-image').addEventListener('click', () => {
-        this.removeImage(imageData.id);
-      });
-      
-      imagePreview.appendChild(item);
+      if (file.type.startsWith('image/')) {
+        await this.handleImageFile(file);
+      } else if (this.isTextFile(file)) {
+        await this.handleTextFile(file);
+      }
+      // Silently ignore unsupported file types
     }
     
-    this.updateImagePreview();
+    this.updateFilePreview();
     this.onInputChange();
+  }
+  
+  async handleImageFile(file) {
+    const imagePreview = document.getElementById('imagePreview');
+    
+    // Convert to base64
+    const base64 = await this.fileToBase64(file);
+    const imageData = {
+      id: Date.now() + Math.random(),
+      base64,
+      mimeType: file.type,
+      name: file.name,
+      type: 'image'
+    };
+    
+    this.pendingImages.push(imageData);
+    
+    // Add preview
+    const item = document.createElement('div');
+    item.className = 'image-preview-item';
+    item.dataset.imageId = imageData.id;
+    item.innerHTML = `
+      <img src="${base64}" alt="${file.name}">
+      <button class="remove-image" title="Remove">×</button>
+    `;
+    
+    item.querySelector('.remove-image').addEventListener('click', () => {
+      this.removeImage(imageData.id);
+    });
+    
+    imagePreview.appendChild(item);
+  }
+  
+  async handleTextFile(file) {
+    const imagePreview = document.getElementById('imagePreview');
+    
+    // Read file content as text
+    const content = await this.fileToText(file);
+    const textData = {
+      id: Date.now() + Math.random(),
+      content,
+      name: file.name,
+      type: 'text'
+    };
+    
+    this.pendingTextFiles.push(textData);
+    
+    // Add preview (text file style)
+    const item = document.createElement('div');
+    item.className = 'image-preview-item text-file-item';
+    item.dataset.textFileId = textData.id;
+    
+    // Get file extension for icon
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'txt';
+    
+    item.innerHTML = `
+      <div class="text-file-preview">
+        <div class="text-file-icon">${this.getFileIcon(ext)}</div>
+        <div class="text-file-name" title="${this.escapeHtml(file.name)}">${this.escapeHtml(file.name)}</div>
+        <div class="text-file-size">${this.formatFileSize(content.length)}</div>
+      </div>
+      <button class="remove-image" title="Remove">×</button>
+    `;
+    
+    item.querySelector('.remove-image').addEventListener('click', () => {
+      this.removeTextFile(textData.id);
+    });
+    
+    imagePreview.appendChild(item);
+  }
+  
+  getFileIcon(ext) {
+    const icons = {
+      'js': '📜',
+      'ts': '📜',
+      'py': '🐍',
+      'json': '📋',
+      'md': '📝',
+      'txt': '📄',
+      'html': '🌐',
+      'css': '🎨',
+      'xml': '📰',
+      'yaml': '⚙️',
+      'yml': '⚙️',
+      'csv': '📊',
+      'log': '📃',
+      'sh': '⚡',
+      'bash': '⚡',
+      'zsh': '⚡',
+      'env': '🔐',
+      'ini': '⚙️',
+      'conf': '⚙️',
+      'cfg': '⚙️'
+    };
+    return icons[ext] || '📄';
+  }
+  
+  formatFileSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
   
   fileToBase64(file) {
@@ -2796,17 +2889,34 @@ Example: [0, 2, 5]`;
     });
   }
   
+  fileToText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+  
   removeImage(imageId) {
     this.pendingImages = this.pendingImages.filter(img => img.id !== imageId);
     const item = document.querySelector(`.image-preview-item[data-image-id="${imageId}"]`);
     if (item) item.remove();
-    this.updateImagePreview();
+    this.updateFilePreview();
     this.onInputChange();
   }
   
-  updateImagePreview() {
+  removeTextFile(textFileId) {
+    this.pendingTextFiles = this.pendingTextFiles.filter(f => f.id !== textFileId);
+    const item = document.querySelector(`.image-preview-item[data-text-file-id="${textFileId}"]`);
+    if (item) item.remove();
+    this.updateFilePreview();
+    this.onInputChange();
+  }
+  
+  updateFilePreview() {
     const imagePreview = document.getElementById('imagePreview');
-    if (this.pendingImages.length > 0) {
+    if (this.pendingImages.length > 0 || this.pendingTextFiles.length > 0) {
       imagePreview.classList.add('has-images');
     } else {
       imagePreview.classList.remove('has-images');
@@ -2815,6 +2925,7 @@ Example: [0, 2, 5]`;
   
   clearPendingImages() {
     this.pendingImages = [];
+    this.pendingTextFiles = [];
     const imagePreview = document.getElementById('imagePreview');
     imagePreview.innerHTML = '';
     imagePreview.classList.remove('has-images');
@@ -2968,9 +3079,10 @@ Example: [0, 2, 5]`;
   async sendMessage() {
     const text = this.elements.messageInput.value.trim();
     const hasImages = this.pendingImages && this.pendingImages.length > 0;
+    const hasTextFiles = this.pendingTextFiles && this.pendingTextFiles.length > 0;
     
-    // Need either text or images
-    if ((!text && !hasImages) || !this.connected) return;
+    // Need either text, images, or text files
+    if ((!text && !hasImages && !hasTextFiles) || !this.connected) return;
 
     // Clear input
     this.elements.messageInput.value = '';
@@ -2992,6 +3104,26 @@ Example: [0, 2, 5]`;
     // Build message content
     let messageContent = text;
     let images = null;
+    let textFiles = null;
+    
+    // Build the full text content (including text file contents)
+    let fullText = text;
+    if (hasTextFiles) {
+      // Store text files for display
+      textFiles = this.pendingTextFiles.map(f => ({
+        name: f.name,
+        content: f.content
+      }));
+      
+      // Prepend file contents to the message
+      const fileContents = this.pendingTextFiles.map(f => 
+        `--- ${f.name} ---\n${f.content}\n--- end ${f.name} ---`
+      ).join('\n\n');
+      
+      fullText = text 
+        ? `${fileContents}\n\n${text}`
+        : fileContents;
+    }
     
     if (hasImages) {
       // Store images for display
@@ -3011,23 +3143,39 @@ Example: [0, 2, 5]`;
         });
       }
       
-      // Add text if present
-      if (text) {
+      // Add text if present (including any text file contents)
+      if (fullText) {
         contentParts.push({
           type: 'text',
-          text: text
+          text: fullText
         });
       }
       
       messageContent = contentParts;
-      this.clearPendingImages();
+    } else {
+      // No images - just send text (including text file contents)
+      messageContent = fullText;
+    }
+    
+    // Clear pending files
+    this.clearPendingImages();
+
+    // Build display content for user message (show file names, not full content)
+    let displayContent = text || '';
+    if (textFiles && textFiles.length > 0) {
+      const fileList = textFiles.map(f => `[${f.name}]`).join(' ');
+      displayContent = text ? `${fileList}\n${text}` : fileList;
+    }
+    if (!displayContent && images) {
+      displayContent = '[Image]';
     }
 
     // Add user message
     const userMsg = {
       role: 'user',
-      content: text || '[Image]',
+      content: displayContent || '[File]',
       images: images, // Store images separately for display
+      textFiles: textFiles, // Store text files for display
       timestamp: Date.now()
     };
     this.chats[this.currentChatId].messages.push(userMsg);
@@ -3043,15 +3191,13 @@ Example: [0, 2, 5]`;
     this.renderMessages();
 
     try {
-      // Track input tokens
-      this.addTokens(this.estimateTokens(text || ''));
-      
-      // Send with multimodal content if images present
-      const sendContent = hasImages ? messageContent : text;
+      // Track input tokens (estimate for full content being sent)
+      const tokenText = typeof messageContent === 'string' ? messageContent : fullText || '';
+      this.addTokens(this.estimateTokens(tokenText));
       
       await this.request('chat.send', {
         sessionKey: this.sessionKey,
-        message: sendContent,
+        message: messageContent,
         deliver: false,
         idempotencyKey: this.generateId()
       });
