@@ -384,6 +384,17 @@ class ClawGPT {
       });
     });
     
+    // Auto-clean token input (remove backticks, quotes, whitespace)
+    const tokenInput = document.getElementById('setupAuthToken');
+    if (tokenInput) {
+      tokenInput.addEventListener('input', () => {
+        const cleaned = tokenInput.value.replace(/[`'"]/g, '').trim();
+        if (cleaned !== tokenInput.value) {
+          tokenInput.value = cleaned;
+        }
+      });
+    }
+    
     // Check gateway connection
     this.checkGatewayConnection();
     
