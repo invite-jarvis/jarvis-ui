@@ -1531,6 +1531,7 @@ body {
 .sidebar.collapsed .sidebar-footer {
   flex-direction: column;
   gap: 4px;
+  margin-top: auto;
 }
 
 .sidebar.collapsed .sidebar-header {
