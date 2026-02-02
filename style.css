@@ -1948,3 +1948,122 @@ body {
 .main {
   transition: margin-left 0.2s ease;
 }
+
+/* Setup Wizard */
+.setup-wizard {
+  max-width: 480px;
+}
+
+.setup-wizard .modal-header h2 {
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-intro {
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.setup-step {
+  margin-top: 24px;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.setup-save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 24px;
+  font-size: 15px;
+}
+
+.setup-success {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.setup-success-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--accent-color, #10a37f);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.setup-success-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--accent-color, #10a37f);
+}
+
+.setup-path {
+  background: var(--input-bg);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 20px;
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.setup-fallback {
+  margin-top: 24px;
+}
+
+.setup-fallback-instructions {
+  background: var(--input-bg);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.setup-fallback-instructions p {
+  margin: 0 0 8px 0;
+}
+
+.setup-fallback-instructions code {
+  display: block;
+  background: var(--bg-color);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  word-break: break-all;
+  margin: 12px 0;
+}
+
+.setup-hint {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  margin-top: 8px;
+}
+
+.setup-config-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(16, 163, 127, 0.1);
+  border-radius: 8px;
+  color: var(--accent-color, #10a37f);
+  margin-bottom: 16px;
+}
+
+.setup-config-status svg {
+  width: 20px;
+  height: 20px;
+}

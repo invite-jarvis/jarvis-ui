@@ -187,25 +187,33 @@ class ClawGPT {
   async init() {
     await this.loadChats();
     this.renderChatList();
-    this.autoConnect();
+    
+    // Check if we need to show setup wizard
+    if (!this.hasConfigFile && !this.authToken) {
+      this.showSetupWizard();
+    } else {
+      this.autoConnect();
+    }
   }
 
   // Settings
   loadSettings() {
     // Check for config.js defaults (optional file)
     const config = window.CLAWGPT_CONFIG || {};
+    this.hasConfigFile = !!(config.authToken);
     
     const saved = localStorage.getItem('clawgpt-settings');
     if (saved) {
       const settings = JSON.parse(saved);
-      this.gatewayUrl = settings.gatewayUrl || config.gatewayUrl || 'ws://localhost:18789';
-      // Use saved token, fall back to config, then empty
-      this.authToken = settings.authToken || config.authToken || '';
-      this.sessionKey = settings.sessionKey || config.sessionKey || 'main';
+      // If we have config.js, use it for sensitive stuff (token)
+      // Only use localStorage for non-sensitive settings
+      this.gatewayUrl = this.hasConfigFile ? config.gatewayUrl : (settings.gatewayUrl || config.gatewayUrl || 'ws://localhost:18789');
+      this.authToken = this.hasConfigFile ? config.authToken : (settings.authToken || config.authToken || '');
+      this.sessionKey = this.hasConfigFile ? config.sessionKey : (settings.sessionKey || config.sessionKey || 'main');
       this.darkMode = settings.darkMode !== false;
-      this.smartSearch = settings.smartSearch !== false; // Default on
-      this.semanticSearch = settings.semanticSearch || false; // Default off
-      this.showTokens = settings.showTokens !== false; // Default on
+      this.smartSearch = settings.smartSearch !== false;
+      this.semanticSearch = settings.semanticSearch || false;
+      this.showTokens = settings.showTokens !== false;
     } else {
       // No saved settings - use config.js values or defaults
       this.gatewayUrl = config.gatewayUrl || 'ws://localhost:18789';
@@ -218,8 +226,8 @@ class ClawGPT {
     }
     
     // Log if using config.js
-    if (config.authToken && this.authToken === config.authToken) {
-      console.log('Using auth token from config.js');
+    if (this.hasConfigFile) {
+      console.log('Using config.js for authentication');
     }
     
     // Token tracking
@@ -228,26 +236,180 @@ class ClawGPT {
     // Check URL params for token (allows one-time setup links)
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('token');
-    if (urlToken) {
+    if (urlToken && !this.hasConfigFile) {
       this.authToken = urlToken;
-      // Save it so it persists
       this.saveSettings();
-      // Strip token from URL for security (don't leave in address bar/history)
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, document.title, cleanUrl);
     }
   }
 
   saveSettings() {
-    localStorage.setItem('clawgpt-settings', JSON.stringify({
-      gatewayUrl: this.gatewayUrl,
-      authToken: this.authToken,
-      sessionKey: this.sessionKey,
+    // Don't save sensitive stuff to localStorage if using config.js
+    const settings = {
       darkMode: this.darkMode,
       smartSearch: this.smartSearch,
       semanticSearch: this.semanticSearch,
       showTokens: this.showTokens
-    }));
+    };
+    
+    // Only save connection settings if NOT using config.js
+    if (!this.hasConfigFile) {
+      settings.gatewayUrl = this.gatewayUrl;
+      settings.authToken = this.authToken;
+      settings.sessionKey = this.sessionKey;
+    }
+    
+    localStorage.setItem('clawgpt-settings', JSON.stringify(settings));
+  }
+  
+  // Setup Wizard
+  showSetupWizard() {
+    const modal = document.getElementById('setupModal');
+    if (!modal) return;
+    
+    modal.classList.add('open');
+    this.initSetupWizard();
+  }
+  
+  initSetupWizard() {
+    const saveBtn = document.getElementById('setupSaveConfigBtn');
+    const connectBtn = document.getElementById('setupConnectBtn');
+    const doneBtn = document.getElementById('setupDoneBtn');
+    
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => this.handleSetupSave());
+    }
+    if (connectBtn) {
+      connectBtn.addEventListener('click', () => this.handleSetupConnect());
+    }
+    if (doneBtn) {
+      doneBtn.addEventListener('click', () => this.handleSetupConnect());
+    }
+  }
+  
+  async handleSetupSave() {
+    const gatewayUrl = document.getElementById('setupGatewayUrl')?.value || 'ws://localhost:18789';
+    const authToken = document.getElementById('setupAuthToken')?.value || '';
+    const sessionKey = document.getElementById('setupSessionKey')?.value || 'main';
+    
+    if (!authToken) {
+      this.showToast('Please enter an auth token', true);
+      return;
+    }
+    
+    // Generate config.js content
+    const configContent = `// ClawGPT Configuration
+// Generated: ${new Date().toISOString()}
+// Keep this file secure - it contains your auth token
+
+window.CLAWGPT_CONFIG = {
+  gatewayUrl: '${gatewayUrl}',
+  authToken: '${authToken}',
+  sessionKey: '${sessionKey}',
+  darkMode: true
+};
+`;
+    
+    // Try File System Access API first (Chrome/Edge)
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'config.js',
+          types: [{
+            description: 'JavaScript file',
+            accept: { 'application/javascript': ['.js'] }
+          }]
+        });
+        
+        const writable = await handle.createWritable();
+        await writable.write(configContent);
+        await writable.close();
+        
+        // Show success
+        this.showSetupSuccess(handle.name);
+        return;
+      } catch (err) {
+        // User cancelled or error - fall through to download
+        if (err.name === 'AbortError') return;
+        console.log('File picker failed, falling back to download:', err);
+      }
+    }
+    
+    // Fallback: Download file
+    this.downloadConfigFile(configContent);
+    this.showSetupFallback();
+  }
+  
+  downloadConfigFile(content) {
+    const blob = new Blob([content], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'config.js';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  
+  showSetupSuccess(filename) {
+    const step1 = document.getElementById('setupStep1');
+    const step2 = document.getElementById('setupStep2');
+    const pathEl = document.getElementById('setupPath');
+    
+    if (step1) step1.style.display = 'none';
+    if (step2) step2.style.display = 'block';
+    if (pathEl) pathEl.textContent = `Saved as: ${filename}`;
+  }
+  
+  showSetupFallback() {
+    const step1 = document.getElementById('setupStep1');
+    const fallback = document.getElementById('setupFallback');
+    const pathEl = document.getElementById('setupFolderPath');
+    
+    if (step1) step1.style.display = 'none';
+    if (fallback) fallback.style.display = 'block';
+    
+    // Try to detect the folder path
+    if (pathEl) {
+      const folderPath = this.detectClawGPTFolder();
+      pathEl.textContent = folderPath;
+    }
+  }
+  
+  detectClawGPTFolder() {
+    const url = window.location.href;
+    
+    // file:// URL - can extract actual path
+    if (url.startsWith('file://')) {
+      let path = url.replace('file:///', '').replace('file://', '');
+      // Remove index.html and decode
+      path = decodeURIComponent(path.replace(/\/[^\/]*\.html.*$/, '').replace(/\\/g, '/'));
+      // Add trailing slash
+      if (!path.endsWith('/')) path += '/';
+      // Format for display (Windows vs Unix)
+      if (path.match(/^[A-Z]:/i)) {
+        // Windows path
+        return path.replace(/\//g, '\\');
+      }
+      return path;
+    }
+    
+    // http:// URL - give generic instructions
+    if (url.includes('localhost')) {
+      return 'The folder where you\'re running the web server from';
+    }
+    
+    return 'The folder containing index.html';
+  }
+  
+  handleSetupConnect() {
+    const modal = document.getElementById('setupModal');
+    if (modal) modal.classList.remove('open');
+    
+    // Reload to pick up config.js
+    window.location.reload();
   }
   
   saveTokenCount() {
@@ -762,6 +924,45 @@ class ClawGPT {
   openSettings() {
     this.elements.settingsModal.classList.add('open');
     this.updateSettingsButtons();
+    this.updateSettingsForConfigMode();
+  }
+  
+  updateSettingsForConfigMode() {
+    const gatewayGroup = this.elements.gatewayUrl?.closest('.form-group');
+    const tokenGroup = this.elements.authToken?.closest('.form-group');
+    const sessionGroup = this.elements.sessionKeyInput?.closest('.form-group');
+    
+    // Add or update config status indicator
+    let statusEl = document.getElementById('configStatus');
+    
+    if (this.hasConfigFile) {
+      // Show config.js status
+      if (!statusEl) {
+        statusEl = document.createElement('div');
+        statusEl.id = 'configStatus';
+        statusEl.className = 'setup-config-status';
+        statusEl.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span>Using config.js for authentication</span>
+        `;
+        const modalBody = this.elements.settingsModal.querySelector('.modal-body');
+        if (modalBody) modalBody.insertBefore(statusEl, modalBody.firstChild);
+      }
+      
+      // Hide connection settings
+      if (gatewayGroup) gatewayGroup.style.display = 'none';
+      if (tokenGroup) tokenGroup.style.display = 'none';
+      if (sessionGroup) sessionGroup.style.display = 'none';
+    } else {
+      // No config.js - show normal settings
+      if (statusEl) statusEl.remove();
+      if (gatewayGroup) gatewayGroup.style.display = '';
+      if (tokenGroup) tokenGroup.style.display = '';
+      if (sessionGroup) sessionGroup.style.display = '';
+    }
   }
 
   closeSettings() {
