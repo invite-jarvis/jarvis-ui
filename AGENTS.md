@@ -58,6 +58,63 @@ Tell the user:
 
 ---
 
+## Mobile Access Setup
+
+When the user asks for mobile access to ClawGPT:
+
+### Same network (at home)
+
+1. **Update gateway config to allow local network:**
+   ```javascript
+   // Use gateway config.patch to change bind from "loopback" to "local"
+   gateway.bind = "local"
+   ```
+
+2. **Restart ClawGPT server with network binding:**
+   ```bash
+   pkill -f "python3 -m http.server 8080"
+   cd ~/clawgpt && nohup python3 -m http.server 8080 --bind 0.0.0.0 &
+   ```
+
+3. **Get the local IP:**
+   ```bash
+   hostname -I | awk '{print $1}'  # Linux
+   ipconfig getifaddr en0          # macOS
+   ```
+
+4. **Tell the user:**
+   > "ClawGPT is now accessible from your phone at http://[LOCAL_IP]:8080 when you're on the same WiFi network."
+
+### Remote access (away from home)
+
+1. **Check if Tailscale is installed:**
+   ```bash
+   which tailscale
+   ```
+
+2. **If Tailscale is installed, enable it:**
+   ```javascript
+   // Use gateway config.patch:
+   gateway.tailscale.mode = "serve"
+   ```
+
+3. **Get Tailscale IP:**
+   ```bash
+   tailscale ip -4
+   ```
+
+4. **Tell the user:**
+   > "ClawGPT is now accessible from anywhere via Tailscale at http://[TAILSCALE_IP]:8080. Make sure Tailscale is installed on your phone too."
+
+5. **If Tailscale is NOT installed:**
+   > "For remote access, I recommend installing Tailscale (free):
+   > 1. Go to https://tailscale.com/download
+   > 2. Install on this computer and your phone
+   > 3. Log in with the same account on both
+   > 4. Then ask me to 'enable Tailscale for ClawGPT'"
+
+---
+
 ## Troubleshooting
 
 **Port 8080 already in use?**
