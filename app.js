@@ -479,6 +479,10 @@ class ClawGPT {
 
     this.elements.newChatBtn.addEventListener('click', () => this.newChat());
     this.elements.stopBtn.addEventListener('click', () => this.stopGeneration());
+    
+    // Voice input button
+    this.initVoiceInput();
+    
     this.elements.settingsBtn.addEventListener('click', () => this.openSettings());
     this.elements.closeSettings.addEventListener('click', () => this.closeSettings());
     this.elements.connectBtn.addEventListener('click', () => this.connect());
@@ -2537,6 +2541,101 @@ Example: [0, 2, 5]`;
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  // Voice input
+  initVoiceInput() {
+    const voiceBtn = document.getElementById('voiceBtn');
+    if (!voiceBtn) return;
+    
+    // Check for browser support
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      voiceBtn.classList.add('unsupported');
+      voiceBtn.title = 'Voice input not supported in this browser';
+      return;
+    }
+    
+    this.recognition = new SpeechRecognition();
+    this.recognition.continuous = true;
+    this.recognition.interimResults = true;
+    this.recognition.lang = navigator.language || 'en-US';
+    
+    this.isRecording = false;
+    this.finalTranscript = '';
+    
+    this.recognition.onstart = () => {
+      this.isRecording = true;
+      voiceBtn.classList.add('recording');
+      voiceBtn.title = 'Click to stop recording';
+    };
+    
+    this.recognition.onend = () => {
+      this.isRecording = false;
+      voiceBtn.classList.remove('recording');
+      voiceBtn.title = 'Voice input';
+      
+      // Append final transcript to input
+      if (this.finalTranscript) {
+        const input = this.elements.messageInput;
+        const needsSpace = input.value && !input.value.endsWith(' ');
+        input.value += (needsSpace ? ' ' : '') + this.finalTranscript;
+        this.finalTranscript = '';
+        this.onInputChange();
+        input.focus();
+      }
+    };
+    
+    this.recognition.onresult = (event) => {
+      let interimTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          this.finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      
+      // Show interim results in placeholder or as preview
+      if (interimTranscript) {
+        this.elements.messageInput.placeholder = interimTranscript + '...';
+      }
+    };
+    
+    this.recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      this.isRecording = false;
+      voiceBtn.classList.remove('recording');
+      
+      if (event.error === 'not-allowed') {
+        this.showToast('Microphone access denied', true);
+      } else if (event.error !== 'aborted') {
+        this.showToast('Voice input error: ' + event.error, true);
+      }
+      
+      this.elements.messageInput.placeholder = 'Message ClawGPT...';
+    };
+    
+    voiceBtn.addEventListener('click', () => this.toggleVoiceInput());
+  }
+  
+  toggleVoiceInput() {
+    if (!this.recognition) return;
+    
+    if (this.isRecording) {
+      this.recognition.stop();
+    } else {
+      this.finalTranscript = '';
+      this.elements.messageInput.placeholder = 'Listening...';
+      try {
+        this.recognition.start();
+      } catch (e) {
+        // Already started, ignore
+        console.log('Recognition already started');
+      }
+    }
   }
 
   scrollToBottom() {
