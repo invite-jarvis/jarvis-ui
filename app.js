@@ -205,7 +205,7 @@ class ClawGPT {
   // Try to connect without auth - returns true if gateway accepts unauthenticated connections
   async tryConnectWithoutAuth() {
     return new Promise((resolve) => {
-      const testUrl = this.gatewayUrl || 'ws://localhost:18789';
+      const testUrl = this.gatewayUrl || 'ws://127.0.0.1:18789';
       let ws;
       
       const cleanup = () => {
@@ -285,7 +285,7 @@ class ClawGPT {
       const settings = JSON.parse(saved);
       // If we have config.js, use it for sensitive stuff (token)
       // Only use localStorage for non-sensitive settings
-      this.gatewayUrl = this.hasConfigFile ? config.gatewayUrl : (settings.gatewayUrl || config.gatewayUrl || 'ws://localhost:18789');
+      this.gatewayUrl = this.hasConfigFile ? config.gatewayUrl : (settings.gatewayUrl || config.gatewayUrl || 'ws://127.0.0.1:18789');
       this.authToken = this.hasConfigFile ? config.authToken : (settings.authToken || config.authToken || '');
       this.sessionKey = this.hasConfigFile ? config.sessionKey : (settings.sessionKey || config.sessionKey || 'main');
       this.darkMode = settings.darkMode !== false;
@@ -294,7 +294,7 @@ class ClawGPT {
       this.showTokens = settings.showTokens !== false;
     } else {
       // No saved settings - use config.js values or defaults
-      this.gatewayUrl = config.gatewayUrl || 'ws://localhost:18789';
+      this.gatewayUrl = config.gatewayUrl || 'ws://127.0.0.1:18789';
       this.authToken = config.authToken || '';
       this.sessionKey = config.sessionKey || 'main';
       this.darkMode = config.darkMode !== false;
@@ -402,14 +402,20 @@ class ClawGPT {
   
   openControlPanel() {
     // Convert WebSocket URL to HTTP URL for control panel
-    const wsUrl = document.getElementById('setupGatewayUrl')?.value || 'ws://localhost:18789';
-    const httpUrl = wsUrl
+    const wsUrl = document.getElementById('setupGatewayUrl')?.value || 'ws://127.0.0.1:18789';
+    let httpUrl = wsUrl
       .replace('wss://', 'https://')
       .replace('ws://', 'http://')
       .replace(/\/$/, '');
     
-    // Open control panel in new tab - go to config page where token is visible
+    // Use 127.0.0.1 instead of localhost (gateway binds to 127.0.0.1)
+    httpUrl = httpUrl.replace('://localhost', '://127.0.0.1');
+    
+    // Open control panel - config page, scrolled to gateway.auth section
     window.open(httpUrl + '/config', '_blank');
+    
+    // Show helper toast
+    this.showToast('Look for gateway → auth → token in the config');
   }
   
   async checkGatewayConnection() {
@@ -487,7 +493,7 @@ class ClawGPT {
   }
   
   async handleSetupSave() {
-    const gatewayUrl = document.getElementById('setupGatewayUrl')?.value || 'ws://localhost:18789';
+    const gatewayUrl = document.getElementById('setupGatewayUrl')?.value || 'ws://127.0.0.1:18789';
     const authToken = document.getElementById('setupAuthToken')?.value || '';
     const sessionKey = document.getElementById('setupSessionKey')?.value || 'main';
     
@@ -1812,7 +1818,7 @@ Example: [0, 2, 5]`;
 
   async connect() {
     // Get settings from UI
-    this.gatewayUrl = this.elements.gatewayUrl.value.trim() || 'ws://localhost:18789';
+    this.gatewayUrl = this.elements.gatewayUrl.value.trim() || 'ws://127.0.0.1:18789';
     this.authToken = this.elements.authToken.value.trim();
     this.sessionKey = this.elements.sessionKeyInput.value.trim() || 'main';
     this.saveSettings();
