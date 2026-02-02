@@ -326,15 +326,7 @@
             </button>
           </div>
           <div class="token-help-inline">
-            <p class="token-help-text">Run this command to see your token:</p>
-            <div class="copy-command token-copy-cmd">
-              <code id="tokenCommand">jq -r '.gateway.auth.token' ~/.openclaw/openclaw.json</code>
-              <button type="button" class="copy-cmd-btn" id="copyTokenCmd" title="Copy command">📋</button>
-            </div>
-            <p class="token-help-alt">
-              <span id="altCommandHint">or on Windows:</span>
-              <code id="altCommand" class="alt-cmd">type %USERPROFILE%\.openclaw\openclaw.json | findstr token</code>
-            </p>
+            <p class="token-help-text">💡 Just ask OpenClaw: <em>"What's my gateway token?"</em></p>
           </div>
         </div>
         
@@ -347,6 +339,7 @@
           <div class="setup-folder-info">
             <p><strong>Save config.js to this folder:</strong></p>
             <code id="setupTargetFolder">Detecting...</code>
+            <p class="hidden-files-hint" id="hiddenFilesHint"></p>
           </div>
           <div class="setup-actions">
             <button class="save-btn setup-save-btn" id="setupSaveConfigBtn">

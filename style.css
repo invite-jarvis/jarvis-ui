@@ -2300,3 +2300,17 @@ body {
   border-radius: 3px;
   font-size: 10px;
 }
+
+.hidden-files-hint {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  margin: 8px 0 0 0;
+  font-style: italic;
+}
+
+.token-help-text em {
+  background: var(--input-bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-style: normal;
+}

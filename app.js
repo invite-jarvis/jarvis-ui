@@ -351,8 +351,24 @@ class ClawGPT {
     
     // Show the target folder path
     const folderEl = document.getElementById('setupTargetFolder');
+    const hintEl = document.getElementById('hiddenFilesHint');
+    
     if (folderEl) {
       folderEl.textContent = this.detectClawGPTFolder();
+    }
+    
+    // Show hidden files hint based on OS
+    if (hintEl) {
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      const isWindows = navigator.platform.toLowerCase().includes('win');
+      
+      if (isMac) {
+        hintEl.textContent = "Can't see the folder? Press Cmd + Shift + . to show hidden files";
+      } else if (isWindows) {
+        hintEl.textContent = "Can't see the folder? In File Explorer, click View → Show → Hidden items";
+      } else {
+        hintEl.textContent = "Can't see the folder? Press Ctrl + H to show hidden files";
+      }
     }
   }
   
@@ -360,7 +376,6 @@ class ClawGPT {
     const saveBtn = document.getElementById('setupSaveConfigBtn');
     const connectBtn = document.getElementById('setupConnectBtn');
     const doneBtn = document.getElementById('setupDoneBtn');
-    const copyCmd = document.getElementById('copyTokenCmd');
     const openControlBtn = document.getElementById('openControlUiBtn');
     const getTokenBtn = document.getElementById('getTokenBtn');
     
@@ -373,18 +388,12 @@ class ClawGPT {
     if (doneBtn) {
       doneBtn.addEventListener('click', () => this.handleSetupConnect());
     }
-    if (copyCmd) {
-      copyCmd.addEventListener('click', () => this.copyTokenCommand());
-    }
     if (openControlBtn) {
       openControlBtn.addEventListener('click', () => this.openControlPanel());
     }
     if (getTokenBtn) {
       getTokenBtn.addEventListener('click', () => this.openControlPanel());
     }
-    
-    // Detect OS and show appropriate paths
-    this.updateConfigPaths();
     
     // Check gateway connection
     this.checkGatewayConnection();
@@ -467,22 +476,7 @@ class ClawGPT {
   }
   
   updateConfigPaths() {
-    const isWindows = navigator.platform.toLowerCase().includes('win');
-    const tokenCmdEl = document.getElementById('tokenCommand');
-    const altCmdEl = document.getElementById('altCommand');
-    const altHintEl = document.getElementById('altCommandHint');
-    
-    if (isWindows) {
-      // Windows: show PowerShell command, alt is basic cmd
-      if (tokenCmdEl) tokenCmdEl.textContent = '(Get-Content ~/.openclaw/openclaw.json | ConvertFrom-Json).gateway.auth.token';
-      if (altHintEl) altHintEl.textContent = 'or open the file:';
-      if (altCmdEl) altCmdEl.textContent = '%USERPROFILE%\\.openclaw\\openclaw.json';
-    } else {
-      // Mac/Linux: show jq command (clean output), alt is grep
-      if (tokenCmdEl) tokenCmdEl.textContent = "jq -r '.gateway.auth.token' ~/.openclaw/openclaw.json";
-      if (altHintEl) altHintEl.textContent = 'or without jq:';
-      if (altCmdEl) altCmdEl.textContent = "grep -o '\"token\": *\"[^\"]*\"' ~/.openclaw/openclaw.json";
-    }
+    // No longer showing terminal commands - users just ask OpenClaw for their token
   }
   
   copyTokenCommand() {
