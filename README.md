@@ -42,42 +42,41 @@
 
 ## 🚀 Quick Start
 
-### Step 1: Install OpenClaw (if you haven't already)
+### Step 1: Install OpenClaw
 
-First, install [Node.js](https://nodejs.org/) (LTS version), then open a terminal:
+1. Install [Node.js](https://nodejs.org/) (LTS version)
 
-```bash
-npm install -g openclaw
-openclaw wizard
-```
+2. Open a terminal and run:
+   ```bash
+   npm install -g openclaw
+   openclaw wizard
+   ```
 
-The wizard will ask how you want to authenticate:
+3. When asked how to authenticate, choose **OAuth** to use your existing Claude.ai subscription (no extra cost!)
 
-| Option | Best for |
-|--------|----------|
-| **OAuth (Claude.ai)** | Already have a Claude Pro subscription ($20/mo)? Use that! |
-| **API Key** | Pay-per-use via console.anthropic.com |
+4. Start the gateway:
+   ```bash
+   openclaw gateway
+   ```
 
-> 💡 **OAuth lets you use your existing Claude.ai subscription** — no extra API costs!
-
-Start the gateway:
-```bash
-openclaw gateway
-```
-
-You can now talk to OpenClaw in your terminal. Try: *"Hello!"*
+You're now talking to Claude through OpenClaw. 
 
 ---
 
 ### Step 2: Set up ClawGPT
 
-Once OpenClaw is running, **just ask it:**
+Just tell OpenClaw:
 
-> *"Help me set up ClawGPT"*
+> **Set up ClawGPT for me: https://github.com/craihub/clawgpt**
 
-OpenClaw will walk you through downloading and configuring everything.
+That's it. OpenClaw will handle the rest.
 
-**Or do it manually:**
+---
+
+### Manual setup (if you prefer)
+
+<details>
+<summary>Click to expand manual instructions</summary>
 
 1. [⬇️ Download ClawGPT ZIP](https://github.com/craihub/clawgpt/archive/refs/heads/main.zip)
 
@@ -92,10 +91,12 @@ OpenClaw will walk you through downloading and configuring everything.
 
 4. Open http://localhost:8080
 
-5. The setup wizard will ask for your token. Just ask OpenClaw:
+5. The setup wizard will ask for your token. Ask OpenClaw:
    > *"What's my gateway token?"*
 
 > 💡 **Can't find your home folder?** Ask OpenClaw: *"open my clawgpt folder"*
+
+</details>
 
 ---
 
