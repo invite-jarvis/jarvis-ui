@@ -770,6 +770,58 @@ window.CLAWGPT_CONFIG = {
     reader.readAsText(file);
   }
   
+  showMobileQR() {
+    const qrContainer = document.getElementById('qrCode');
+    const placeholder = document.getElementById('qrPlaceholder');
+    const urlDisplay = document.getElementById('mobileUrl');
+    
+    if (!qrContainer) return;
+    
+    // Build the URL with token
+    const protocol = window.location.protocol;
+    const host = window.location.hostname;
+    const port = window.location.port;
+    
+    // If localhost, try to get LAN IP (will need to be set manually or use a fallback)
+    let mobileUrl;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      // Show instructions to find LAN IP
+      mobileUrl = `${protocol}//${host}${port ? ':' + port : ''}`;
+      if (urlDisplay) {
+        urlDisplay.innerHTML = `<strong>Current URL:</strong> ${mobileUrl}<br><small>For mobile access, use your computer's local IP instead of localhost</small>`;
+      }
+    } else {
+      mobileUrl = `${protocol}//${host}${port ? ':' + port : ''}`;
+      if (urlDisplay) {
+        urlDisplay.textContent = mobileUrl;
+      }
+    }
+    
+    // Add token to URL if we have one
+    if (this.authToken) {
+      mobileUrl += `?token=${encodeURIComponent(this.authToken)}`;
+    }
+    
+    // Hide placeholder, show QR
+    if (placeholder) placeholder.style.display = 'none';
+    qrContainer.style.display = 'block';
+    qrContainer.innerHTML = ''; // Clear existing
+    
+    // Generate QR code
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(qrContainer, {
+        text: mobileUrl,
+        width: 160,
+        height: 160,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } else {
+      qrContainer.innerHTML = '<p style="color: var(--text-muted);">QR library not loaded</p>';
+    }
+  }
+  
   showToast(message, isError = false) {
     // Remove existing toast
     const existing = document.querySelector('.toast');
@@ -906,6 +958,12 @@ window.CLAWGPT_CONFIG = {
           e.target.value = ''; // Reset so same file can be imported again
         }
       });
+    }
+    
+    // QR Code for mobile access
+    const showQrBtn = document.getElementById('showQrBtn');
+    if (showQrBtn) {
+      showQrBtn.addEventListener('click', () => this.showMobileQR());
     }
     
     this.elements.menuBtn.addEventListener('click', () => this.toggleSidebar());

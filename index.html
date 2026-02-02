@@ -241,6 +241,29 @@
           <input type="file" id="importFileInput" accept=".json" style="display: none;">
           <span class="setting-hint">Export saves all chats to a JSON file. Import merges chats from a file.</span>
         </div>
+        <div class="settings-divider"></div>
+        <div class="settings-section-title">Mobile Access</div>
+        <div class="form-group mobile-access">
+          <div class="qr-container" id="qrContainer">
+            <div class="qr-placeholder" id="qrPlaceholder">
+              <button class="data-btn" id="showQrBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="3" height="3"></rect>
+                  <rect x="18" y="14" width="3" height="3"></rect>
+                  <rect x="14" y="18" width="3" height="3"></rect>
+                  <rect x="18" y="18" width="3" height="3"></rect>
+                </svg>
+                Show QR Code
+              </button>
+            </div>
+            <div class="qr-code" id="qrCode" style="display:none;"></div>
+          </div>
+          <span class="setting-hint">Scan with your phone to open ClawGPT on mobile (same WiFi network)</span>
+          <div class="mobile-url" id="mobileUrl"></div>
+        </div>
         <div class="settings-actions">
           <button class="save-btn" id="saveSettingsBtn">Save</button>
           <button class="connect-btn" id="connectBtn">Connect</button>
@@ -464,6 +487,8 @@
     </div>
   </div>
 
+  <!-- QR Code generator for mobile access -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Prism.js core + autoloader for syntax highlighting -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
