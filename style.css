@@ -741,6 +741,136 @@ body {
   color: var(--text-muted);
 }
 
+/* Attach image button */
+.attach-btn {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.attach-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.attach-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Image preview area */
+.image-preview {
+  display: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 768px;
+  margin: 0 auto 12px;
+  padding: 0 24px;
+}
+
+.image-preview.has-images {
+  display: flex;
+}
+
+.image-preview-item {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-preview-item .remove-image {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.image-preview-item:hover .remove-image {
+  opacity: 1;
+}
+
+.image-preview-item .remove-image:hover {
+  background: rgba(239, 68, 68, 0.8);
+}
+
+/* Message images */
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.message-images img {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.message-images img:hover {
+  transform: scale(1.02);
+}
+
+/* Drag and drop overlay */
+.drag-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(16, 163, 127, 0.1);
+  border: 3px dashed var(--accent-color);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drag-overlay.active {
+  display: flex;
+}
+
+.drag-overlay-text {
+  background: var(--bg-secondary);
+  padding: 24px 48px;
+  border-radius: 12px;
+  font-size: 18px;
+  color: var(--accent-color);
+  font-weight: 500;
+}
+
 /* Voice input button */
 .voice-btn {
   background: transparent;

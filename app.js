@@ -496,6 +496,9 @@ class ClawGPT {
     // Text-to-speech
     this.initSpeechSynthesis();
     
+    // Image upload
+    this.initImageUpload();
+    
     this.elements.settingsBtn.addEventListener('click', () => this.openSettings());
     this.elements.closeSettings.addEventListener('click', () => this.closeSettings());
     this.elements.connectBtn.addEventListener('click', () => this.connect());
@@ -730,7 +733,8 @@ class ClawGPT {
 
   onInputChange() {
     const hasText = this.elements.messageInput.value.trim().length > 0;
-    this.elements.sendBtn.disabled = !hasText || !this.connected;
+    const hasImages = this.pendingImages && this.pendingImages.length > 0;
+    this.elements.sendBtn.disabled = (!hasText && !hasImages) || !this.connected;
 
     // Auto-resize textarea
     this.elements.messageInput.style.height = 'auto';
@@ -2031,12 +2035,20 @@ Example: [0, 2, 5]`;
       const editIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
       const regenIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>`;
       
+      // Render images if present
+      const imagesHtml = msg.images && msg.images.length > 0 
+        ? `<div class="message-images">${msg.images.map(img => 
+            `<img src="${img.base64}" alt="Uploaded image" onclick="window.open('${img.base64}', '_blank')">`
+          ).join('')}</div>`
+        : '';
+      
       return `
         <div class="message ${msg.role}" data-idx="${originalIdx}">
           <div class="message-header">
             <div class="avatar ${msg.role}">${isUser ? 'You' : 'AI'}</div>
             <span class="message-role">${isUser ? 'You' : 'ClawGPT'}</span>
           </div>
+          ${imagesHtml}
           <div class="message-content">${this.formatContent(msg.content)}</div>
           <div class="message-actions">
             <button class="msg-action-btn copy-btn" title="Copy">${copyIcon}</button>
@@ -2663,6 +2675,151 @@ Example: [0, 2, 5]`;
     }
   }
   
+  // Image Upload
+  initImageUpload() {
+    this.pendingImages = [];
+    
+    const attachBtn = document.getElementById('attachBtn');
+    const imageInput = document.getElementById('imageInput');
+    const imagePreview = document.getElementById('imagePreview');
+    
+    if (!attachBtn || !imageInput) return;
+    
+    // Click attach button opens file picker
+    attachBtn.addEventListener('click', () => imageInput.click());
+    
+    // Handle file selection
+    imageInput.addEventListener('change', (e) => {
+      this.handleImageFiles(e.target.files);
+      e.target.value = ''; // Reset so same file can be selected again
+    });
+    
+    // Drag and drop
+    const dropZone = document.querySelector('.main');
+    if (dropZone) {
+      // Create drag overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'drag-overlay';
+      overlay.innerHTML = '<div class="drag-overlay-text">Drop images here</div>';
+      document.body.appendChild(overlay);
+      
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        overlay.classList.add('active');
+      });
+      
+      dropZone.addEventListener('dragleave', (e) => {
+        if (!dropZone.contains(e.relatedTarget)) {
+          overlay.classList.remove('active');
+        }
+      });
+      
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        overlay.classList.remove('active');
+        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+        if (files.length) {
+          this.handleImageFiles(files);
+        }
+      });
+      
+      overlay.addEventListener('dragleave', () => {
+        overlay.classList.remove('active');
+      });
+      
+      overlay.addEventListener('drop', (e) => {
+        e.preventDefault();
+        overlay.classList.remove('active');
+        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+        if (files.length) {
+          this.handleImageFiles(files);
+        }
+      });
+    }
+    
+    // Paste from clipboard
+    document.addEventListener('paste', (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageItems = items.filter(item => item.type.startsWith('image/'));
+      
+      if (imageItems.length > 0) {
+        e.preventDefault();
+        const files = imageItems.map(item => item.getAsFile()).filter(Boolean);
+        this.handleImageFiles(files);
+      }
+    });
+  }
+  
+  async handleImageFiles(files) {
+    const imagePreview = document.getElementById('imagePreview');
+    
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      
+      // Convert to base64
+      const base64 = await this.fileToBase64(file);
+      const imageData = {
+        id: Date.now() + Math.random(),
+        base64,
+        mimeType: file.type,
+        name: file.name
+      };
+      
+      this.pendingImages.push(imageData);
+      
+      // Add preview
+      const item = document.createElement('div');
+      item.className = 'image-preview-item';
+      item.dataset.imageId = imageData.id;
+      item.innerHTML = `
+        <img src="${base64}" alt="${file.name}">
+        <button class="remove-image" title="Remove">×</button>
+      `;
+      
+      item.querySelector('.remove-image').addEventListener('click', () => {
+        this.removeImage(imageData.id);
+      });
+      
+      imagePreview.appendChild(item);
+    }
+    
+    this.updateImagePreview();
+    this.onInputChange();
+  }
+  
+  fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  
+  removeImage(imageId) {
+    this.pendingImages = this.pendingImages.filter(img => img.id !== imageId);
+    const item = document.querySelector(`.image-preview-item[data-image-id="${imageId}"]`);
+    if (item) item.remove();
+    this.updateImagePreview();
+    this.onInputChange();
+  }
+  
+  updateImagePreview() {
+    const imagePreview = document.getElementById('imagePreview');
+    if (this.pendingImages.length > 0) {
+      imagePreview.classList.add('has-images');
+    } else {
+      imagePreview.classList.remove('has-images');
+    }
+  }
+  
+  clearPendingImages() {
+    this.pendingImages = [];
+    const imagePreview = document.getElementById('imagePreview');
+    imagePreview.innerHTML = '';
+    imagePreview.classList.remove('has-images');
+  }
+
   // Text-to-Speech
   initSpeechSynthesis() {
     if (!('speechSynthesis' in window)) {
@@ -2810,7 +2967,10 @@ Example: [0, 2, 5]`;
 
   async sendMessage() {
     const text = this.elements.messageInput.value.trim();
-    if (!text || !this.connected) return;
+    const hasImages = this.pendingImages && this.pendingImages.length > 0;
+    
+    // Need either text or images
+    if ((!text && !hasImages) || !this.connected) return;
 
     // Clear input
     this.elements.messageInput.value = '';
@@ -2822,17 +2982,52 @@ Example: [0, 2, 5]`;
       this.currentChatId = this.generateId();
       this.chats[this.currentChatId] = {
         id: this.currentChatId,
-        title: text.slice(0, 30) + (text.length > 30 ? '...' : ''),
+        title: (text || 'Image').slice(0, 30) + ((text || '').length > 30 ? '...' : ''),
         messages: [],
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
     }
 
+    // Build message content
+    let messageContent = text;
+    let images = null;
+    
+    if (hasImages) {
+      // Store images for display
+      images = this.pendingImages.map(img => ({
+        base64: img.base64,
+        mimeType: img.mimeType
+      }));
+      
+      // Build multimodal content for API
+      const contentParts = [];
+      
+      // Add images first
+      for (const img of this.pendingImages) {
+        contentParts.push({
+          type: 'image_url',
+          image_url: { url: img.base64 }
+        });
+      }
+      
+      // Add text if present
+      if (text) {
+        contentParts.push({
+          type: 'text',
+          text: text
+        });
+      }
+      
+      messageContent = contentParts;
+      this.clearPendingImages();
+    }
+
     // Add user message
     const userMsg = {
       role: 'user',
-      content: text,
+      content: text || '[Image]',
+      images: images, // Store images separately for display
       timestamp: Date.now()
     };
     this.chats[this.currentChatId].messages.push(userMsg);
@@ -2849,11 +3044,14 @@ Example: [0, 2, 5]`;
 
     try {
       // Track input tokens
-      this.addTokens(this.estimateTokens(text));
+      this.addTokens(this.estimateTokens(text || ''));
+      
+      // Send with multimodal content if images present
+      const sendContent = hasImages ? messageContent : text;
       
       await this.request('chat.send', {
         sessionKey: this.sessionKey,
-        message: text,
+        message: sendContent,
         deliver: false,
         idempotencyKey: this.generateId()
       });
