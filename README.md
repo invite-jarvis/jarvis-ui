@@ -8,23 +8,25 @@
 
 ### Why ClawGPT?
 
-| Feature | ChatGPT | Claude.ai | ClawGPT |
-|---------|:-------:|:---------:|:-------:|
-| Edit any message | ✅ | ❌ | ✅ |
-| Conversation branching | ✅ | ❌ | ✅ |
-| Regenerate responses | ✅ | ✅ | ✅ |
-| Choose model per-message | ❌ | ❌ | ✅ |
-| Search all chats | ✅ | ❌ | ✅ |
-| AI-powered semantic search | ❌ | ❌ | ✅ |
-| Export all chats (JSON) | ❌ | ❌ | ✅ |
-| Import/restore chats | ❌ | ❌ | ✅ |
-| Unlimited chat history | ❌ | ❌ | ✅ |
-| Works offline | ❌ | ❌ | ✅ |
-| Data stays on your machine | ❌ | ❌ | ✅ |
-| Pin favorite chats | ❌ | ❌ | ✅ |
-| Open source | ❌ | ❌ | ✅ |
+| Feature | ChatGPT | Claude.ai | OpenClaw | ClawGPT |
+|---------|:-------:|:---------:|:--------:|:-------:|
+| Edit any message | ✅ | ❌ | ❌ | ✅ |
+| Conversation branching | ✅ | ❌ | ❌ | ✅ |
+| Regenerate responses | ✅ | ✅ | ❌ | ✅ |
+| Choose model per-message | ❌ | ❌ | ✅ | ✅ |
+| Search all chats | ✅ | ❌ | ❌ | ✅ |
+| AI-powered semantic search | ❌ | ❌ | ❌ | ✅ |
+| Export all chats (JSON) | ❌ | ❌ | ❌ | ✅ |
+| Import/restore chats | ❌ | ❌ | ❌ | ✅ |
+| Unlimited local history | ❌ | ❌ | ✅ | ✅ |
+| Works offline | ❌ | ❌ | ❌ | ✅ |
+| Data stays on your machine | ❌ | ❌ | ✅ | ✅ |
+| Pin favorite chats | ❌ | ❌ | ❌ | ✅ |
+| Multi-channel (Telegram, etc) | ❌ | ❌ | ✅ | ❌ |
+| Agentic tools & automation | ❌ | ❌ | ✅ | ❌ |
+| Open source | ❌ | ❌ | ✅ | ✅ |
 
-**Use your existing Claude.ai subscription** — no extra API costs, no new accounts, just a better interface.
+**ClawGPT + OpenClaw = best of both worlds.** Use ClawGPT for the polished chat UI, and OpenClaw for automation, multi-channel access, and agentic tools.
 
 ## ✨ Features
 
