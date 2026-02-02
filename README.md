@@ -4,26 +4,35 @@
 
 ![ClawGPT Screenshot](screenshot.png)
 
-**ClawGPT** gives you a familiar ChatGPT-like experience for your local AI. No cloud, no subscription, no data leaving your machine.
+**ClawGPT** gives you a familiar ChatGPT-like experience for your local AI. No cloud, no subscription, no data leaving your machine. Full ChatGPT-style editing, branching, and regeneration — the features power users actually want.
 
 ## ✨ Features
 
-- [x] **Chat history** — Saved locally, never leaves your browser
+### Core Chat
+- [x] **Chat history** — Saved locally in browser, never leaves your machine
 - [x] **Multiple conversations** — Sidebar with all your chats
-- [x] **Streaming responses** — See answers as they're generated
+- [x] **Streaming responses** — See answers as they're generated in real-time
 - [x] **Stop generation** — Red stop button to halt mid-response
-- [x] **Dark/Light mode** — Easy on the eyes
-- [x] **Mobile friendly** — Responsive design
+- [x] **Dark/Light mode** — Easy on the eyes, system preference supported
+- [x] **Mobile friendly** — Fully responsive design
 - [x] **Zero dependencies** — No npm, no build tools, just HTML/CSS/JS
 
-### Coming Soon
+### Organization
+- [x] **Pin favorite chats** — Drag-and-drop reordering, pinned chats stay at top
+- [x] **Rename chats** — Custom titles instead of auto-generated ones
+- [x] **Search chat history** — Find any conversation instantly with smart search
+- [x] **Semantic search** — Optional AI-powered search for better results
 
-- [x] Pin favorite chats (drag-and-drop, top 5 visible, rest collapsible)
-- [ ] Search chat history
-- [ ] Rename chats
-- [ ] Copy button for messages
-- [ ] Edit previous messages
-- [ ] Regenerate responses
+### Editing & Branching
+- [x] **Edit previous messages** — Modify any message in the conversation
+- [x] **Chat branching** — Edits create branches, preserving original conversation
+- [x] **Branch visualization** — Branches grouped under parent chats in sidebar
+- [x] **Copy messages** — One-click copy for any message
+
+### Response Control
+- [x] **Regenerate responses** — Get a new answer with one click
+- [x] **Model selection** — Choose different AI models per regeneration
+- [x] **Per-chat model display** — See which model is being used
 
 ## 🚀 Quick Start
 
@@ -88,6 +97,11 @@ clawgpt/
 | **Privacy** | Data sent to OpenAI | Stays on your machine |
 | **Internet** | Required | Works offline |
 | **Model choice** | GPT-4 only | Any model via OpenClaw |
+| **Edit messages** | ✅ | ✅ |
+| **Branching** | ✅ | ✅ |
+| **Regenerate** | ✅ | ✅ + model selection |
+| **Search history** | ✅ | ✅ + semantic search |
+| **Data ownership** | OpenAI owns it | You own it |
 | **Customization** | Limited | Full control |
 
 ## 🛠️ Troubleshooting
@@ -116,4 +130,6 @@ MIT — do whatever you want with it.
 
 ---
 
-**Keywords:** ChatGPT alternative, self-hosted AI chat, local LLM interface, OpenClaw UI, free ChatGPT, private AI assistant, open source ChatGPT clone, web UI for local AI
+## 🔑 Keywords
+
+ChatGPT alternative, self-hosted AI chat, local LLM interface, OpenClaw UI, free ChatGPT, private AI assistant, open source ChatGPT clone, web UI for local AI, ChatGPT clone with branching, edit AI messages, regenerate AI responses, chat history search, self-hosted Claude interface, local GPT-4 UI, offline AI chat, conversation branching, edit and retry AI chat, free GPT interface, localhost AI chat, browser-based AI chat, no-signup AI chat
