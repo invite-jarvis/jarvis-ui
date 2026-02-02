@@ -18,7 +18,7 @@
 
 ### Coming Soon
 
-- [ ] Pin favorite chats
+- [x] Pin favorite chats (drag-and-drop, top 5 visible, rest collapsible)
 - [ ] Search chat history
 - [ ] Rename chats
 - [ ] Copy button for messages
