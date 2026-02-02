@@ -2211,3 +2211,68 @@ body {
 #gatewayHint.offline {
   color: #ef4444;
 }
+
+/* Token input with control panel button */
+.token-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.token-input-row input {
+  flex: 1;
+}
+
+.open-control-btn {
+  padding: 8px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.open-control-btn:hover {
+  background: var(--border-color);
+  color: var(--text-primary);
+}
+
+.token-help-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.get-token-btn {
+  background: var(--accent-color, #10a37f);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+
+.get-token-btn:hover {
+  opacity: 0.9;
+}
+
+.token-help-or {
+  color: var(--text-muted, #888);
+  font-size: 12px;
+}
+
+.token-help-inline .token-help {
+  margin-top: 0;
+}
+
+.token-help-inline .token-help summary {
+  font-size: 12px;
+}

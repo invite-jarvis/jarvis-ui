@@ -315,20 +315,28 @@
         
         <div class="form-group">
           <label for="setupAuthToken">Auth Token</label>
-          <input type="password" id="setupAuthToken" placeholder="Your OpenClaw auth token">
-          <details class="token-help">
-            <summary>Where do I find this?</summary>
-            <div class="token-help-content">
-              <p>Your token is in the OpenClaw config file:</p>
-              <code class="config-path" id="configPathDisplay">~/.openclaw/config.yaml</code>
-              <p>Look for the <strong>auth.token</strong> value, or run:</p>
-              <div class="copy-command">
-                <code id="tokenCommand">grep -A1 "auth:" ~/.openclaw/config.yaml</code>
-                <button type="button" class="copy-cmd-btn" id="copyTokenCmd" title="Copy command">📋</button>
+          <div class="token-input-row">
+            <input type="password" id="setupAuthToken" placeholder="Your OpenClaw auth token">
+            <button type="button" class="open-control-btn" id="openControlUiBtn" title="Open OpenClaw Control Panel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+            </button>
+          </div>
+          <div class="token-help-inline">
+            <button type="button" class="get-token-btn" id="getTokenBtn">Get token from Control Panel</button>
+            <span class="token-help-or">or</span>
+            <details class="token-help">
+              <summary>find it manually</summary>
+              <div class="token-help-content">
+                <p>Your token is in:</p>
+                <code class="config-path" id="configPathDisplay">~/.openclaw/openclaw.json</code>
+                <p>Look for <strong>gateway.auth.token</strong></p>
               </div>
-              <p class="token-help-link"><a href="https://docs.openclaw.ai" target="_blank">OpenClaw Documentation →</a></p>
-            </div>
-          </details>
+            </details>
+          </div>
         </div>
         
         <div class="form-group">

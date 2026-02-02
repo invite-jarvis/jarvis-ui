@@ -361,6 +361,8 @@ class ClawGPT {
     const connectBtn = document.getElementById('setupConnectBtn');
     const doneBtn = document.getElementById('setupDoneBtn');
     const copyCmd = document.getElementById('copyTokenCmd');
+    const openControlBtn = document.getElementById('openControlUiBtn');
+    const getTokenBtn = document.getElementById('getTokenBtn');
     
     if (saveBtn) {
       saveBtn.addEventListener('click', () => this.handleSetupSave());
@@ -373,6 +375,12 @@ class ClawGPT {
     }
     if (copyCmd) {
       copyCmd.addEventListener('click', () => this.copyTokenCommand());
+    }
+    if (openControlBtn) {
+      openControlBtn.addEventListener('click', () => this.openControlPanel());
+    }
+    if (getTokenBtn) {
+      getTokenBtn.addEventListener('click', () => this.openControlPanel());
     }
     
     // Detect OS and show appropriate paths
@@ -390,6 +398,18 @@ class ClawGPT {
         debounce = setTimeout(() => this.checkGatewayConnection(), 500);
       });
     }
+  }
+  
+  openControlPanel() {
+    // Convert WebSocket URL to HTTP URL for control panel
+    const wsUrl = document.getElementById('setupGatewayUrl')?.value || 'ws://localhost:18789';
+    const httpUrl = wsUrl
+      .replace('wss://', 'https://')
+      .replace('ws://', 'http://')
+      .replace(/\/$/, '');
+    
+    // Open control panel in new tab - go to config page where token is visible
+    window.open(httpUrl + '/config', '_blank');
   }
   
   async checkGatewayConnection() {
