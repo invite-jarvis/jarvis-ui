@@ -9,7 +9,7 @@
 ## ✨ Features
 
 ### Core Chat
-- [x] **Chat history** — Saved locally in browser, never leaves your machine
+- [x] **Chat history** — Saved locally via IndexedDB, never leaves your machine
 - [x] **Multiple conversations** — Sidebar with all your chats
 - [x] **Streaming responses** — See answers as they're generated in real-time
 - [x] **Stop generation** — Red stop button to halt mid-response
@@ -33,6 +33,12 @@
 - [x] **Regenerate responses** — Get a new answer with one click
 - [x] **Model selection** — Choose different AI models per regeneration
 - [x] **Per-chat model display** — See which model is being used
+
+### Data & Storage
+- [x] **IndexedDB storage** — Virtually unlimited local storage (no 5MB limit)
+- [x] **Export chats** — Download all conversations as JSON backup
+- [x] **Import chats** — Restore or merge chats from backup file
+- [x] **Auto-migration** — Seamlessly migrates from localStorage if upgrading
 
 ## 🚀 Quick Start
 
@@ -66,6 +72,8 @@ Click the **Settings** button (gear icon) to configure:
 | Auth Token | Gateway authentication token | (from URL or manual) |
 | Session Key | OpenClaw session to use | `main` |
 | Dark Mode | Toggle dark/light theme | On |
+| Smart Search | AI-generated summaries for search | On |
+| Export/Import | Backup and restore all chats | — |
 
 ## 🔧 How It Works
 
@@ -75,7 +83,7 @@ ClawGPT connects directly to OpenClaw's Gateway WebSocket API:
 2. Authenticates with your token
 3. Sends messages via `chat.send`
 4. Receives streaming responses via `chat` events
-5. Stores chat history in browser localStorage
+5. Stores chat history in browser IndexedDB (with localStorage fallback)
 
 **No server needed** — It's pure client-side JavaScript.
 
@@ -83,9 +91,10 @@ ClawGPT connects directly to OpenClaw's Gateway WebSocket API:
 
 ```
 clawgpt/
-├── index.html   # Main HTML structure
-├── style.css    # ChatGPT-like styling
-├── app.js       # WebSocket + UI logic
+├── index.html      # Main HTML structure
+├── style.css       # ChatGPT-like styling
+├── app.js          # WebSocket + UI logic + IndexedDB storage
+├── screenshot.png  # UI screenshot
 └── README.md
 ```
 
@@ -101,6 +110,8 @@ clawgpt/
 | **Branching** | ✅ | ✅ |
 | **Regenerate** | ✅ | ✅ + model selection |
 | **Search history** | ✅ | ✅ + semantic search |
+| **Export/Import** | Limited | Full JSON backup |
+| **Storage limit** | Cloud-based | Unlimited (IndexedDB) |
 | **Data ownership** | OpenAI owns it | You own it |
 | **Customization** | Limited | Full control |
 
@@ -116,13 +127,21 @@ clawgpt/
 - Status should show "Connected" (green)
 
 **Chat history missing?**
-- History is in browser localStorage
-- Different browsers/profiles have separate storage
-- Try: Settings → Connect
+- Chats are stored in browser IndexedDB (per browser/profile)
+- Use Settings → Export to back up your chats
+- Use Settings → Import to restore from backup
+
+**Moving to a new browser?**
+1. In old browser: Settings → Export Chats
+2. In new browser: Settings → Import Chats
 
 ## 🤝 Contributing
 
-PRs welcome! Check the "Coming Soon" list above for ideas.
+PRs welcome! Ideas for contribution:
+- Keyboard shortcuts help panel
+- Chat folders/tags
+- Code syntax highlighting
+- PWA/offline support
 
 ## 📄 License
 
@@ -132,4 +151,4 @@ MIT — do whatever you want with it.
 
 ## 🔑 Keywords
 
-ChatGPT alternative, self-hosted AI chat, local LLM interface, OpenClaw UI, free ChatGPT, private AI assistant, open source ChatGPT clone, web UI for local AI, ChatGPT clone with branching, edit AI messages, regenerate AI responses, chat history search, self-hosted Claude interface, local GPT-4 UI, offline AI chat, conversation branching, edit and retry AI chat, free GPT interface, localhost AI chat, browser-based AI chat, no-signup AI chat
+ChatGPT alternative, self-hosted AI chat, local LLM interface, OpenClaw UI, free ChatGPT, private AI assistant, open source ChatGPT clone, web UI for local AI, ChatGPT clone with branching, edit AI messages, regenerate AI responses, chat history search, self-hosted Claude interface, local GPT-4 UI, offline AI chat, conversation branching, edit and retry AI chat, free GPT interface, localhost AI chat, browser-based AI chat, no-signup AI chat, export chat history, import chat backup, IndexedDB chat storage, unlimited chat history, local AI web interface
