@@ -1122,16 +1122,21 @@ window.CLAWGPT_CONFIG = {
     qrContainer.style.display = 'block';
     
     try {
+      // Initialize E2E encryption
+      this.relayCrypto = new RelayCrypto();
+      const publicKey = this.relayCrypto.getPublicKey();
+      
       // Connect to relay and get channel ID
       const relayUrl = this.relayServerUrl || 'wss://clawgpt-relay.fly.dev';
       const channelId = await this.connectToRelay(relayUrl);
       
-      // Build mobile URL with relay info
-      const mobileUrl = `clawgpt://relay?server=${encodeURIComponent(relayUrl)}&channel=${channelId}&token=${encodeURIComponent(this.authToken || '')}`;
+      // Build mobile URL with relay info + our public key (NOT the auth token!)
+      // The auth token will be sent encrypted after key exchange
+      const mobileUrl = `clawgpt://relay?server=${encodeURIComponent(relayUrl)}&channel=${channelId}&pubkey=${encodeURIComponent(publicKey)}`;
       
-      // Update display
+      // Update display - show waiting for phone
       if (urlDisplay) {
-        urlDisplay.innerHTML = `<strong>Mode:</strong> Remote Relay<br><strong>Channel:</strong> ${channelId}<br><span style="color: var(--accent-color);">Works from anywhere!</span>`;
+        urlDisplay.innerHTML = `<strong>Mode:</strong> Remote Relay (E2E Encrypted)<br><strong>Channel:</strong> ${channelId}<br><em>Waiting for phone to connect...</em>`;
       }
       
       this.renderQRCode(qrContainer, placeholder, mobileUrl);
@@ -1152,6 +1157,9 @@ window.CLAWGPT_CONFIG = {
         this.relayWs.close();
       }
       
+      // Reset encryption state
+      this.relayEncrypted = false;
+      
       const wsUrl = relayUrl.replace(/^http/, 'ws') + '/new';
       console.log('Connecting to relay:', wsUrl);
       
@@ -1164,17 +1172,41 @@ window.CLAWGPT_CONFIG = {
       this.relayWs.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'relay' && msg.event === 'channel.created') {
-            console.log('Relay channel created:', msg.channelId);
-            this.relayChannelId = msg.channelId;
-            resolve(msg.channelId);
-          } else if (msg.type === 'relay' && msg.event === 'client.connected') {
-            console.log('Mobile client connected via relay');
-            this.showToast('Mobile device connected!');
-          } else {
-            // Forward gateway messages
-            this.handleRelayMessage(msg);
+          
+          // Handle relay control messages
+          if (msg.type === 'relay') {
+            if (msg.event === 'channel.created') {
+              console.log('Relay channel created:', msg.channelId);
+              this.relayChannelId = msg.channelId;
+              resolve(msg.channelId);
+            } else if (msg.event === 'client.connected') {
+              console.log('Mobile client connected via relay, waiting for key exchange...');
+            }
+            return;
           }
+          
+          // Handle key exchange from phone
+          if (msg.type === 'keyexchange' && msg.publicKey) {
+            this.handleRelayKeyExchange(msg.publicKey);
+            return;
+          }
+          
+          // Handle encrypted messages
+          if (msg.type === 'encrypted' && this.relayEncrypted) {
+            const decrypted = this.relayCrypto.openEnvelope(msg);
+            if (decrypted) {
+              this.handleRelayMessage(decrypted);
+            } else {
+              console.error('Failed to decrypt relay message');
+            }
+            return;
+          }
+          
+          // Fallback for unencrypted messages (shouldn't happen after key exchange)
+          if (!this.relayEncrypted) {
+            console.warn('Received unencrypted message before key exchange');
+          }
+          
         } catch (e) {
           console.error('Relay message parse error:', e);
         }
@@ -1188,6 +1220,11 @@ window.CLAWGPT_CONFIG = {
       this.relayWs.onclose = () => {
         console.log('Relay connection closed');
         this.relayWs = null;
+        this.relayEncrypted = false;
+        if (this.relayCrypto) {
+          this.relayCrypto.destroy();
+          this.relayCrypto = null;
+        }
       };
       
       // Timeout
@@ -1200,10 +1237,63 @@ window.CLAWGPT_CONFIG = {
     });
   }
   
+  handleRelayKeyExchange(peerPublicKey) {
+    console.log('Received public key from phone, completing key exchange...');
+    
+    if (!this.relayCrypto) {
+      console.error('RelayCrypto not initialized');
+      return;
+    }
+    
+    // Set peer's public key and derive shared secret
+    if (!this.relayCrypto.setPeerPublicKey(peerPublicKey)) {
+      console.error('Failed to set peer public key');
+      this.showToast('Secure connection failed', true);
+      return;
+    }
+    
+    this.relayEncrypted = true;
+    
+    // Get verification emoji
+    const emoji = this.relayCrypto.getVerificationEmoji();
+    console.log('E2E encryption established! Verification:', emoji);
+    
+    // Update the UI to show connected + verification emoji
+    const urlDisplay = document.getElementById('mobileUrl');
+    if (urlDisplay) {
+      urlDisplay.innerHTML = `<strong>Mode:</strong> Remote Relay (E2E Encrypted)<br><strong>Verify:</strong> <span style="font-size: 1.5em;">${emoji}</span><br><span style="color: var(--accent-color);">✓ Secure connection established!</span>`;
+    }
+    
+    this.showToast(`Secure connection! Verify: ${emoji}`);
+    
+    // Now send the auth token encrypted
+    this.sendRelayMessage({
+      type: 'auth',
+      token: this.authToken,
+      gatewayUrl: this.gatewayUrl
+    });
+  }
+  
   handleRelayMessage(msg) {
     // Forward messages from mobile client to gateway
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+    }
+  }
+  
+  sendRelayMessage(msg) {
+    if (!this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) {
+      console.error('Relay not connected');
+      return;
+    }
+    
+    if (this.relayEncrypted && this.relayCrypto) {
+      // Send encrypted
+      const envelope = this.relayCrypto.createEnvelope(msg);
+      this.relayWs.send(JSON.stringify(envelope));
+    } else {
+      // Send unencrypted (only during key exchange)
+      this.relayWs.send(JSON.stringify(msg));
     }
   }
   
@@ -2393,9 +2483,9 @@ Example: [0, 2, 5]`;
   }
 
   handleMessage(msg) {
-    // Forward to relay if connected (for mobile clients)
-    if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN) {
-      this.relayWs.send(JSON.stringify(msg));
+    // Forward to relay if connected (for mobile clients) - encrypted
+    if (this.relayWs && this.relayWs.readyState === WebSocket.OPEN && this.relayEncrypted) {
+      this.sendRelayMessage(msg);
     }
     
     // Handle challenge

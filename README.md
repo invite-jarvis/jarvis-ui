@@ -60,6 +60,26 @@
 - [x] **Import chats** — Restore or merge chats from backup file
 - [x] **Auto-migration** — Seamlessly migrates from localStorage if upgrading
 
+## 🔒 Security
+
+### Local Mode
+When running on the same network as your computer, ClawGPT connects directly to your local OpenClaw gateway. Your data never leaves your network.
+
+### Remote Access (Relay Mode)
+Need to use ClawGPT from your phone when you're away from home? Enable Relay Mode for secure remote access.
+
+| Security Feature | Description |
+|-----------------|-------------|
+| **End-to-End Encryption** | XSalsa20-Poly1305 — your messages are encrypted before leaving your device |
+| **Zero-Knowledge Relay** | The relay server only sees encrypted blobs, never your actual messages |
+| **Perfect Forward Secrecy** | New encryption keys generated for each session |
+| **Visual Verification** | Matching emoji on both devices confirms no man-in-the-middle |
+| **No Token Exposure** | Your auth token is never sent through the relay |
+
+**Crypto details:** X25519 key exchange, XSalsa20-Poly1305 authenticated encryption, powered by [TweetNaCl.js](https://tweetnacl.js.org/).
+
+> 💡 Don't trust our relay? [Self-host your own](https://github.com/craihub/clawgpt-relay) — it's just a simple Node.js server.
+
 ## 🚀 Quick Start
 
 ### Step 1: Install OpenClaw
