@@ -1236,6 +1236,7 @@ window.CLAWGPT_CONFIG = {
             } else if (msg.event === 'client.disconnected') {
               console.log('Mobile client disconnected');
               this.relayEncrypted = false;
+              this.setStatus('Waiting for phone...');
               this.showToast('Phone disconnected - will reconnect automatically', true);
             } else if (msg.event === 'error') {
               console.error('Relay error:', msg.error);
@@ -2932,19 +2933,28 @@ Example: [0, 2, 5]`;
 
       this.ws.onerror = (error) => {
         console.error('WebSocket error:', error);
-        this.setStatus('Error');
+        // Don't overwrite status if we're connected via relay
+        if (!this.relayEncrypted) {
+          this.setStatus('Error');
+        }
       };
 
       this.ws.onclose = () => {
         console.log('WebSocket closed');
         this.connected = false;
-        this.setStatus('Disconnected');
+        // Don't overwrite status if we're connected via relay
+        if (!this.relayEncrypted) {
+          this.setStatus('Disconnected');
+        }
         this.elements.sendBtn.disabled = true;
         this.updateSettingsButtons();
       };
     } catch (error) {
       console.error('Connection error:', error);
-      this.setStatus('Error');
+      // Don't overwrite status if we're connected via relay
+      if (!this.relayEncrypted) {
+        this.setStatus('Error');
+      }
     }
   }
 
