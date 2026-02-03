@@ -1254,17 +1254,17 @@ window.CLAWGPT_CONFIG = {
     
     this.relayEncrypted = true;
     
-    // Get verification emoji
-    const emoji = this.relayCrypto.getVerificationEmoji();
-    console.log('E2E encryption established! Verification:', emoji);
+    // Get verification code (words)
+    const verifyCode = this.relayCrypto.getVerificationCode();
+    console.log('E2E encryption established! Verification:', verifyCode);
     
-    // Update the UI to show connected + verification emoji
+    // Update the UI to show connected + verification code
     const urlDisplay = document.getElementById('mobileUrl');
     if (urlDisplay) {
-      urlDisplay.innerHTML = `<strong>Mode:</strong> Remote Relay (E2E Encrypted)<br><strong>Verify:</strong> <span style="font-size: 1.5em;">${emoji}</span><br><span style="color: var(--accent-color);">✓ Secure connection established!</span>`;
+      urlDisplay.innerHTML = `<strong>Mode:</strong> Remote Relay (E2E Encrypted)<br><strong>Verify:</strong> <code style="font-size: 0.95em; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;">${verifyCode}</code><br><span style="color: var(--accent-color);">Match these words on your phone</span>`;
     }
     
-    this.showToast(`Secure connection! Verify: ${emoji}`);
+    this.showToast(`Secure! Verify: ${verifyCode}`, 5000);
     
     // Now send the auth token encrypted
     this.sendRelayMessage({
