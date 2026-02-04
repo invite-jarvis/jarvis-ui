@@ -1700,10 +1700,8 @@ window.CLAWGPT_CONFIG = {
         console.log('Relay connection closed');
         this.relayWs = null;
         this.relayEncrypted = false;
-        if (this.relayCrypto) {
-          this.relayCrypto.destroy();
-          this.relayCrypto = null;
-        }
+        // Don't destroy relayCrypto here - it may be reused for reconnection
+        // It will be replaced if a fresh key exchange happens
       };
       
       // Timeout
