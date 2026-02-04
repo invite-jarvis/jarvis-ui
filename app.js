@@ -1,6 +1,115 @@
 // ClawGPT - ChatGPT-like interface for OpenClaw
 // https://github.com/openclaw/openclaw
 
+// Global error handler with visual debugging + Copy Logs button
+window._clawgptErrors = [];
+window._clawgptLogs = [];
+
+// Log collector - captures all console output
+(function() {
+  const origLog = console.log;
+  const origWarn = console.warn;
+  const origError = console.error;
+  const maxLogs = 200;
+  
+  function addLog(level, args) {
+    const msg = `[${level}] ${Array.from(args).map(a => {
+      try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
+      catch { return String(a); }
+    }).join(' ')}`;
+    window._clawgptLogs.push(msg);
+    if (window._clawgptLogs.length > maxLogs) window._clawgptLogs.shift();
+  }
+  
+  console.log = function(...args) { addLog('LOG', args); origLog.apply(console, args); };
+  console.warn = function(...args) { addLog('WARN', args); origWarn.apply(console, args); };
+  console.error = function(...args) { addLog('ERROR', args); origError.apply(console, args); };
+})();
+
+// Show error banner with Copy Logs button
+function showErrorBanner(errMsg, isWarning) {
+  if (!document.body) return;
+  
+  // Remove existing error banners (keep only one at a time)
+  document.querySelectorAll('.clawgpt-error-banner').forEach(el => el.remove());
+  
+  const banner = document.createElement('div');
+  banner.className = 'clawgpt-error-banner';
+  banner.style.cssText = `
+    position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
+    background: ${isWarning ? '#e67e22' : '#e74c3c'}; color: white;
+    padding: 12px 15px; font-size: 13px; font-family: system-ui, sans-serif;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  `;
+  
+  const msgSpan = document.createElement('span');
+  msgSpan.style.cssText = 'flex: 1; min-width: 200px; word-break: break-word;';
+  msgSpan.textContent = errMsg;
+  
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = 'Copy Logs';
+  copyBtn.style.cssText = `
+    background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4);
+    color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  `;
+  copyBtn.onclick = function() {
+    const fullLog = [
+      '=== ClawGPT Error Log ===',
+      'Time: ' + new Date().toISOString(),
+      'UserAgent: ' + navigator.userAgent,
+      '',
+      '=== Errors ===',
+      ...window._clawgptErrors,
+      '',
+      '=== Recent Logs ===',
+      ...window._clawgptLogs.slice(-50)
+    ].join('\n');
+    
+    navigator.clipboard.writeText(fullLog).then(() => {
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => copyBtn.textContent = 'Copy Logs', 2000);
+    }).catch(() => {
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = fullLog;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => copyBtn.textContent = 'Copy Logs', 2000);
+    });
+  };
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText = `
+    background: none; border: none; color: white; font-size: 20px;
+    cursor: pointer; padding: 0 5px; line-height: 1;
+  `;
+  closeBtn.onclick = () => banner.remove();
+  
+  banner.appendChild(msgSpan);
+  banner.appendChild(copyBtn);
+  banner.appendChild(closeBtn);
+  document.body.appendChild(banner);
+}
+
+window.onerror = function(message, source, lineno, colno, error) {
+  const errMsg = `ERROR: ${message} at ${source}:${lineno}:${colno}`;
+  console.error('ClawGPT Error:', errMsg, error);
+  window._clawgptErrors.push(errMsg);
+  showErrorBanner(errMsg, false);
+  return false;
+};
+
+window.addEventListener('unhandledrejection', function(event) {
+  const errMsg = `PROMISE REJECT: ${event.reason}`;
+  console.error('ClawGPT Unhandled Promise Rejection:', event.reason);
+  window._clawgptErrors.push(errMsg);
+  showErrorBanner(errMsg, true);
+});
+
 // IndexedDB wrapper for chat storage
 class ChatStorage {
   constructor() {
@@ -400,6 +509,203 @@ class FileMemoryStorage {
   }
 }
 
+// Mobile Memory Storage - Uses Capacitor Filesystem for automatic storage (no user prompt)
+// This is used on mobile instead of FileMemoryStorage
+class MobileMemoryStorage {
+  constructor() {
+    this.enabled = false;
+    this.Filesystem = null;
+    this.Directory = null;
+    this.folderName = 'clawgpt-memory';
+    this.pendingWrites = [];
+    this.writeDebounce = null;
+  }
+
+  async init() {
+    try {
+      console.log('MobileMemoryStorage: Starting init...');
+      
+      // Check if Capacitor is available
+      if (typeof Capacitor === 'undefined') {
+        console.log('MobileMemoryStorage: Capacitor not available');
+        return false;
+      }
+      
+      console.log('MobileMemoryStorage: Capacitor found, checking plugins...');
+      console.log('MobileMemoryStorage: Capacitor.Plugins =', JSON.stringify(Object.keys(Capacitor.Plugins || {})));
+
+      // Try to get Filesystem plugin
+      let Filesystem = null;
+      
+      if (Capacitor.Plugins?.Filesystem) {
+        console.log('MobileMemoryStorage: Found Capacitor.Plugins.Filesystem');
+        Filesystem = Capacitor.Plugins.Filesystem;
+      } else {
+        console.log('MobileMemoryStorage: Filesystem plugin not in Capacitor.Plugins');
+        return false;
+      }
+
+      this.Filesystem = Filesystem;
+      console.log('MobileMemoryStorage: Attempting to create folder...');
+      
+      // Create clawgpt-memory folder if it doesn't exist
+      await this.ensureFolder();
+      
+      this.enabled = true;
+      console.log('MobileMemoryStorage: Ready!');
+      return true;
+    } catch (e) {
+      console.error('MobileMemoryStorage: Init failed with error:', e);
+      console.error('MobileMemoryStorage: Error stack:', e.stack);
+      // Don't crash - just disable the feature
+      return false;
+    }
+  }
+
+  async ensureFolder() {
+    try {
+      await this.Filesystem.mkdir({
+        path: this.folderName,
+        directory: 'DOCUMENTS',
+        recursive: true
+      });
+    } catch (e) {
+      // Folder might already exist, that's fine
+      if (!e.message?.includes('exist')) {
+        console.warn('MobileMemoryStorage: mkdir warning:', e);
+      }
+    }
+  }
+
+  async writeMessage(message) {
+    if (!this.enabled) return;
+
+    this.pendingWrites.push(message);
+    
+    // Debounce writes
+    if (this.writeDebounce) clearTimeout(this.writeDebounce);
+    this.writeDebounce = setTimeout(() => this.flushWrites(), 1000);
+  }
+
+  async flushWrites() {
+    if (!this.enabled || this.pendingWrites.length === 0) return;
+
+    const toWrite = [...this.pendingWrites];
+    this.pendingWrites = [];
+
+    try {
+      // Group messages by date
+      const byDate = {};
+      for (const msg of toWrite) {
+        const date = new Date(msg.timestamp).toISOString().split('T')[0];
+        if (!byDate[date]) byDate[date] = [];
+        byDate[date].push(msg);
+      }
+
+      // Write to date-based files
+      for (const [date, messages] of Object.entries(byDate)) {
+        await this.appendToDateFile(date, messages);
+      }
+    } catch (e) {
+      console.error('MobileMemoryStorage: Error writing messages:', e);
+      // Put messages back in queue
+      this.pendingWrites = [...toWrite, ...this.pendingWrites];
+    }
+  }
+
+  async appendToDateFile(date, messages) {
+    const filename = `${this.folderName}/${date}.jsonl`;
+    
+    try {
+      // Try to read existing content
+      let existingContent = '';
+      let existingIds = new Set();
+      
+      try {
+        const result = await this.Filesystem.readFile({
+          path: filename,
+          directory: 'DOCUMENTS',
+          encoding: 'utf8'
+        });
+        existingContent = result.data || '';
+        
+        // Parse existing IDs to avoid duplicates
+        for (const line of existingContent.split('\n')) {
+          if (line.trim()) {
+            try {
+              const msg = JSON.parse(line);
+              if (msg.id) existingIds.add(msg.id);
+            } catch {}
+          }
+        }
+      } catch (e) {
+        // File doesn't exist yet, that's fine
+      }
+      
+      // Filter out duplicates and create new lines
+      const newMessages = messages.filter(m => !existingIds.has(m.id));
+      if (newMessages.length === 0) return;
+      
+      const newLines = newMessages.map(m => JSON.stringify(m)).join('\n') + '\n';
+      const fullContent = existingContent + newLines;
+      
+      // Write back
+      await this.Filesystem.writeFile({
+        path: filename,
+        directory: 'DOCUMENTS',
+        data: fullContent,
+        encoding: 'utf8'
+      });
+      
+      console.log(`MobileMemoryStorage: Wrote ${newMessages.length} messages to ${date}.jsonl`);
+    } catch (e) {
+      console.error(`MobileMemoryStorage: Error writing to ${filename}:`, e);
+      throw e;
+    }
+  }
+
+  async writeChat(chat) {
+    if (!this.enabled || !chat.messages) return;
+
+    for (let i = 0; i < chat.messages.length; i++) {
+      const msg = chat.messages[i];
+      await this.writeMessage({
+        id: `${chat.id}-${i}`,
+        chatId: chat.id,
+        chatTitle: chat.title || 'Untitled',
+        order: i,
+        role: msg.role,
+        content: msg.content || '',
+        timestamp: msg.timestamp || chat.createdAt || Date.now()
+      });
+    }
+  }
+
+  async syncAllChats(chats) {
+    if (!this.enabled) return 0;
+
+    let count = 0;
+    for (const chat of Object.values(chats)) {
+      if (chat.messages) {
+        await this.writeChat(chat);
+        count += chat.messages.length;
+      }
+    }
+    
+    // Force flush
+    await this.flushWrites();
+    return count;
+  }
+
+  isEnabled() {
+    return this.enabled;
+  }
+
+  getDirectoryName() {
+    return this.enabled ? this.folderName : null;
+  }
+}
+
 // ClawGPT Memory - Per-message storage for better search
 class MemoryStorage {
   constructor() {
@@ -678,6 +984,16 @@ class ClawGPT {
     this.pinnedExpanded = false;
     this.storage = new ChatStorage();
     this.memoryStorage = new MemoryStorage();
+    // Use MobileMemoryStorage on Capacitor (auto-creates folder), FileMemoryStorage on desktop
+    // TEMPORARILY DISABLED: MobileMemoryStorage causes crash on some devices
+    // TODO: Re-enable once Capacitor Filesystem plugin issue is resolved
+    try {
+      this.isMobile = typeof Capacitor !== 'undefined' && typeof Capacitor.isNativePlatform === 'function' && Capacitor.isNativePlatform();
+    } catch (e) {
+      console.warn('Error checking Capacitor platform:', e);
+      this.isMobile = false;
+    }
+    // Always use FileMemoryStorage for now - MobileMemoryStorage disabled due to crash
     this.fileMemoryStorage = new FileMemoryStorage();
 
     this.loadSettings();
@@ -704,6 +1020,17 @@ class ClawGPT {
       return; // Don't auto-connect to gateway - we'll get connection through relay
     }
     
+    // Check if we have a saved relay connection (phone reconnecting after app restart)
+    const savedRelay = this.getSavedRelayConnection();
+    if (savedRelay) {
+      console.log('Found saved relay connection, reconnecting...');
+      const reconnected = await this.reconnectToRelay();
+      if (reconnected) {
+        return; // Don't show setup wizard - we're reconnecting via relay
+      }
+      // If reconnect failed, fall through to setup wizard
+    }
+    
     // Check if we need to show setup wizard
     if (!this.hasConfigFile && !this.authToken) {
       // Try connecting without auth first - many local setups don't require it
@@ -715,34 +1042,6 @@ class ClawGPT {
       }
     } else {
       this.autoConnect();
-    }
-    
-    // Auto-reconnect to relay room if we have a saved pairing ID
-    this.autoReconnectRelay();
-  }
-  
-  // Auto-reconnect to saved relay room (for persistent mobile connection)
-  async autoReconnectRelay() {
-    const pairingId = localStorage.getItem('clawgpt-pairing-id');
-    if (!pairingId) return;
-    
-    console.log('Auto-reconnecting to relay room:', pairingId);
-    
-    // Initialize crypto
-    if (typeof RelayCrypto === 'undefined') {
-      console.warn('RelayCrypto not available for auto-reconnect');
-      return;
-    }
-    
-    this.relayCrypto = new RelayCrypto();
-    
-    const relayUrl = this.relayServerUrl || 'wss://clawgpt-relay.fly.dev';
-    
-    try {
-      await this.connectToRelayRoom(relayUrl, pairingId);
-      console.log('Auto-reconnected to relay room');
-    } catch (err) {
-      console.warn('Failed to auto-reconnect to relay:', err);
     }
   }
   
@@ -953,11 +1252,11 @@ class ClawGPT {
       if (count > 0) {
         console.log(`File memory: synced ${count} messages to disk`);
       }
-    } else {
-      // Check if this is first run and we should auto-setup
+    } else if (!this.isMobile) {
+      // Desktop only: prompt for folder selection on first run
+      // (Mobile auto-creates the folder, no prompt needed)
       const hasAskedForMemory = localStorage.getItem('clawgpt-memory-asked');
       if (!hasAskedForMemory && 'showDirectoryPicker' in window) {
-        // Prompt user to set up clawgpt-memory folder
         this.promptFileMemorySetup();
       } else {
         console.log('File memory storage not enabled (select folder in settings)');
@@ -965,14 +1264,26 @@ class ClawGPT {
     }
   }
   
-  // Prompt user to set up file memory (shown as toast, not blocking popup)
+  // Prompt user to set up file memory on first run (desktop only)
   async promptFileMemorySetup() {
-    // Mark that we've asked (so we don't prompt again)
+    // Mark that we've asked (so we don't ask again)
     localStorage.setItem('clawgpt-memory-asked', 'true');
     
-    // Just show a non-intrusive toast - users can set it up in Settings later
-    // The main setup wizard already includes the memory folder step
-    this.showToast('Tip: Set up cross-device memory in Settings → Cross-Device Memory', 5000);
+    // Show a toast explaining the feature
+    this.showToast('Tip: Set up cross-device memory in Settings', 5000);
+    
+    // Auto-open settings after a short delay on first run
+    setTimeout(() => {
+      const shouldSetup = confirm(
+        'ClawGPT can sync your conversations across devices.\n\n' +
+        'To enable this, select a folder called "clawgpt-memory" in your ClawGPT directory.\n\n' +
+        'Set up now?'
+      );
+      
+      if (shouldSetup) {
+        this.enableFileMemoryStorage();
+      }
+    }, 2000);
   }
   
   // Enable file memory storage (user selects directory)
@@ -989,30 +1300,6 @@ class ClawGPT {
     }
     
     return success;
-  }
-  
-  // Handle memory folder setup in the setup wizard
-  async handleSetupMemory() {
-    const success = await this.fileMemoryStorage.selectDirectory();
-    const statusEl = document.getElementById('setupMemoryStatus');
-    
-    if (success) {
-      // Mark as done so we don't prompt again
-      localStorage.setItem('clawgpt-memory-asked', 'true');
-      
-      if (statusEl) {
-        statusEl.textContent = `✓ ${this.fileMemoryStorage.getDirectoryName()} selected`;
-        statusEl.style.color = 'var(--accent-color)';
-      }
-      
-      // Sync existing chats if any
-      const count = await this.fileMemoryStorage.syncAllChats(this.chats);
-      if (count > 0) {
-        this.showToast(`Synced ${count} messages`);
-      }
-    } else if (statusEl) {
-      statusEl.textContent = '';
-    }
   }
   
   // Update file memory UI elements
@@ -1078,12 +1365,6 @@ class ClawGPT {
     }
     if (getTokenBtn) {
       getTokenBtn.addEventListener('click', () => this.openControlPanel());
-    }
-    
-    // Memory folder setup button
-    const memoryBtn = document.getElementById('setupMemoryBtn');
-    if (memoryBtn) {
-      memoryBtn.addEventListener('click', () => this.handleSetupMemory());
     }
     
     // Copy buttons
@@ -1604,6 +1885,213 @@ window.CLAWGPT_CONFIG = {
     return pairingId;
   }
   
+  // Scan QR code on mobile using MLKit barcode scanner
+  async scanQRCode() {
+    try {
+      // Check if Capacitor and the barcode scanner plugin are available
+      if (typeof Capacitor === 'undefined' || !Capacitor.isNativePlatform()) {
+        this.showToast('QR scanning only works on mobile', true);
+        return;
+      }
+      
+      const { BarcodeScanner } = Capacitor.Plugins;
+      if (!BarcodeScanner) {
+        this.showToast('Barcode scanner not available', true);
+        return;
+      }
+      
+      // Check/request camera permission
+      const permStatus = await BarcodeScanner.checkPermissions();
+      if (permStatus.camera !== 'granted') {
+        const reqStatus = await BarcodeScanner.requestPermissions();
+        if (reqStatus.camera !== 'granted') {
+          this.showToast('Camera permission required to scan QR codes', true);
+          return;
+        }
+      }
+      
+      // Hide the UI to show camera preview
+      document.body.classList.add('scanner-active');
+      
+      // Add a close button for the scanner
+      const closeBtn = document.createElement('button');
+      closeBtn.id = 'scanner-close-btn';
+      closeBtn.innerHTML = '✕ Cancel';
+      closeBtn.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;background:#333;color:white;border:none;padding:12px 20px;border-radius:8px;font-size:16px;';
+      closeBtn.onclick = async () => {
+        await BarcodeScanner.stopScan();
+        document.body.classList.remove('scanner-active');
+        closeBtn.remove();
+      };
+      document.body.appendChild(closeBtn);
+      
+      // Start scanning
+      const result = await BarcodeScanner.scan();
+      
+      // Clean up
+      document.body.classList.remove('scanner-active');
+      closeBtn.remove();
+      
+      // Debug: log entire result
+      const scanLog = [];
+      scanLog.push('=== QR SCAN RESULT ===');
+      scanLog.push('Result type: ' + typeof result);
+      scanLog.push('Result keys: ' + (result ? Object.keys(result).join(', ') : 'null'));
+      scanLog.push('Result JSON: ' + JSON.stringify(result, null, 2));
+      
+      if (result && result.barcodes) {
+        scanLog.push('Barcodes count: ' + result.barcodes.length);
+        if (result.barcodes.length > 0) {
+          const barcode = result.barcodes[0];
+          scanLog.push('Barcode keys: ' + Object.keys(barcode).join(', '));
+          scanLog.push('rawValue: ' + barcode.rawValue);
+          scanLog.push('displayValue: ' + barcode.displayValue);
+          scanLog.push('format: ' + barcode.format);
+        }
+      }
+      
+      console.log(scanLog.join('\n'));
+      
+      // Store log for copy button
+      window._lastScanLog = scanLog.join('\n');
+      
+      if (result.barcodes && result.barcodes.length > 0) {
+        const qrContent = result.barcodes[0].rawValue || result.barcodes[0].displayValue || '';
+        scanLog.push('Using qrContent: ' + qrContent);
+        
+        if (!qrContent) {
+          this.showScanDebug(scanLog, 'No QR content found');
+          return;
+        }
+        
+        // Parse the QR code URL and extract relay params
+        try {
+          // Clean up the URL - remove any stray spaces that QR scanning might introduce
+          const cleanedContent = qrContent.trim().replace(/\s+/g, '');
+          scanLog.push('Cleaned content: ' + cleanedContent);
+          
+          // Extract params using regex (more robust than URL parsing for malformed URLs)
+          const relayMatch = cleanedContent.match(/[?&]relay=([^&]+)/);
+          const roomMatch = cleanedContent.match(/[?&]room=([^&]+)/);
+          const pubkeyMatch = cleanedContent.match(/[?&]pubkey=([^&]+)/);
+          const gatewayMatch = cleanedContent.match(/[?&]gateway=([^&]+)/);
+          
+          scanLog.push('relayMatch: ' + (relayMatch ? relayMatch[1] : 'null'));
+          scanLog.push('roomMatch: ' + (roomMatch ? roomMatch[1] : 'null'));
+          scanLog.push('pubkeyMatch: ' + (pubkeyMatch ? 'found' : 'null'));
+          scanLog.push('gatewayMatch: ' + (gatewayMatch ? gatewayMatch[1] : 'null'));
+          
+          const relay = relayMatch ? decodeURIComponent(relayMatch[1]) : null;
+          const room = roomMatch ? decodeURIComponent(roomMatch[1]) : null;
+          const pubkey = pubkeyMatch ? decodeURIComponent(pubkeyMatch[1]) : null;
+          const gateway = gatewayMatch ? decodeURIComponent(gatewayMatch[1]) : null;
+          
+          scanLog.push('Decoded relay: ' + relay);
+          scanLog.push('Decoded room: ' + room);
+          scanLog.push('Decoded pubkey: ' + (pubkey ? pubkey.substring(0, 30) + '...' : 'null'));
+          
+          window._lastScanLog = scanLog.join('\n');
+          
+          if (relay && room && pubkey) {
+            // Join relay room with these params
+            this.showToast('Connecting to desktop...');
+            await this.joinRelayAsClient({ server: relay, channel: room, pubkey });
+          } else if (gateway) {
+            // Local network mode - redirect to the URL
+            window.location.href = cleanedContent;
+          } else {
+            this.showScanDebug(scanLog, 'Missing params');
+          }
+        } catch (e) {
+          scanLog.push('Parse error: ' + e.message);
+          window._lastScanLog = scanLog.join('\n');
+          this.showScanDebug(scanLog, 'Parse error: ' + e.message);
+        }
+      } else {
+        scanLog.push('No barcodes in result');
+        window._lastScanLog = scanLog.join('\n');
+        this.showScanDebug(scanLog, 'No barcodes detected');
+      }
+    } catch (error) {
+      console.error('QR scan error:', error);
+      document.body.classList.remove('scanner-active');
+      const closeBtn = document.getElementById('scanner-close-btn');
+      if (closeBtn) closeBtn.remove();
+      this.showToast('Scan failed: ' + error.message, true);
+    }
+  }
+  
+  // Show scan debug dialog with copy button
+  showScanDebug(logLines, errorMsg) {
+    const log = logLines.join('\n');
+    window._lastScanLog = log;
+    
+    // Create debug modal
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:99999;padding:20px;overflow:auto;';
+    modal.innerHTML = `
+      <div style="background:#1a1a1a;border-radius:8px;padding:20px;max-width:600px;margin:0 auto;">
+        <h3 style="color:#e74c3c;margin:0 0 10px;">QR Scan Failed: ${errorMsg}</h3>
+        <pre style="background:#000;color:#0f0;padding:10px;border-radius:4px;overflow:auto;max-height:400px;font-size:11px;white-space:pre-wrap;word-break:break-all;">${log}</pre>
+        <div style="margin-top:15px;display:flex;gap:10px;">
+          <button id="copyLogBtn" style="flex:1;padding:12px;background:#3498db;color:white;border:none;border-radius:4px;font-size:14px;">Copy Log</button>
+          <button id="closeDebugBtn" style="flex:1;padding:12px;background:#666;color:white;border:none;border-radius:4px;font-size:14px;">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    
+    document.getElementById('copyLogBtn').onclick = () => {
+      navigator.clipboard.writeText(log).then(() => {
+        this.showToast('Log copied to clipboard');
+      }).catch(() => {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = log;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        this.showToast('Log copied to clipboard');
+      });
+    };
+    
+    document.getElementById('closeDebugBtn').onclick = () => {
+      modal.remove();
+    };
+  }
+  
+  // Connect from manual setup form (mobile)
+  connectFromSetup() {
+    const gatewayUrl = document.getElementById('setupGatewayUrl')?.value?.trim();
+    const authToken = document.getElementById('setupAuthToken')?.value?.trim();
+    const sessionKey = document.getElementById('setupSessionKey')?.value?.trim() || 'main';
+    
+    if (!gatewayUrl) {
+      this.showToast('Please enter a Gateway URL', true);
+      return;
+    }
+    
+    // Save settings
+    this.gatewayUrl = gatewayUrl;
+    this.authToken = authToken || '';
+    this.sessionKey = sessionKey;
+    this.saveSettings();
+    
+    // Update main settings UI if present
+    if (this.elements.gatewayUrl) this.elements.gatewayUrl.value = gatewayUrl;
+    if (this.elements.authToken) this.elements.authToken.value = authToken || '';
+    if (this.elements.sessionKeyInput) this.elements.sessionKeyInput.value = sessionKey;
+    
+    // Hide setup modal
+    const modal = document.getElementById('setupModal');
+    if (modal) modal.style.display = 'none';
+    
+    // Connect
+    this.showToast('Connecting...');
+    this.connect();
+  }
+  
   connectToRelayRoom(relayUrl, roomId) {
     return new Promise((resolve, reject) => {
       // Close existing relay connection
@@ -1700,8 +2188,7 @@ window.CLAWGPT_CONFIG = {
         console.log('Relay connection closed');
         this.relayWs = null;
         this.relayEncrypted = false;
-        // Don't destroy relayCrypto here - it may be reused for reconnection
-        // It will be replaced if a fresh key exchange happens
+        // Don't destroy relayCrypto - may be reused for reconnection
       };
       
       // Timeout
@@ -1714,11 +2201,150 @@ window.CLAWGPT_CONFIG = {
     });
   }
   
+  // Save relay connection info for auto-reconnect
+  saveRelayConnection(server, roomId) {
+    localStorage.setItem('clawgpt-relay-server', server);
+    localStorage.setItem('clawgpt-relay-room', roomId);
+    console.log('Saved relay connection:', { server, roomId });
+  }
+  
+  // Get saved relay connection info
+  getSavedRelayConnection() {
+    const server = localStorage.getItem('clawgpt-relay-server');
+    const roomId = localStorage.getItem('clawgpt-relay-room');
+    if (server && roomId) {
+      return { server, roomId };
+    }
+    return null;
+  }
+  
+  // Clear saved relay connection
+  clearRelayConnection() {
+    localStorage.removeItem('clawgpt-relay-server');
+    localStorage.removeItem('clawgpt-relay-room');
+  }
+  
+  // Reconnect to saved relay room (on app restart)
+  async reconnectToRelay() {
+    const saved = this.getSavedRelayConnection();
+    if (!saved) return false;
+    
+    console.log('Reconnecting to saved relay room:', saved);
+    this.setStatus('Reconnecting...');
+    
+    // Initialize crypto - we'll wait for desktop to send key exchange
+    if (typeof RelayCrypto === 'undefined') {
+      console.error('RelayCrypto not available');
+      return false;
+    }
+    
+    this.relayCrypto = new RelayCrypto();
+    this.relayCrypto.generateKeyPair();
+    
+    const wsUrl = saved.server.replace('https://', 'wss://').replace('http://', 'ws://');
+    const roomUrl = `${wsUrl}/room/${saved.roomId}`;
+    
+    try {
+      this.relayWs = new WebSocket(roomUrl);
+    } catch (e) {
+      console.error('Failed to reconnect to relay:', e);
+      this.setStatus('Reconnect failed');
+      return false;
+    }
+    
+    this.relayWs.onopen = () => {
+      console.log('Reconnected to relay room, waiting for desktop...');
+      this.setStatus('Waiting for desktop...');
+      
+      // Close setup modal if open
+      const setupModal = document.getElementById('setupModal');
+      if (setupModal) {
+        setupModal.classList.remove('open');
+        setupModal.style.display = 'none';
+      }
+    };
+    
+    this.relayWs.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        
+        // Handle relay control messages
+        if (msg.type === 'relay') {
+          if (msg.event === 'room.joined') {
+            console.log('Joined relay room:', msg);
+            // We're in the room, waiting for desktop to connect and send keyexchange
+          } else if (msg.event === 'peer.joined') {
+            console.log('Desktop connected to room');
+            this.setStatus('Desktop connected, securing...');
+          } else if (msg.event === 'host.disconnected' || msg.event === 'peer.left') {
+            this.setStatus('Waiting for desktop...');
+          } else if (msg.event === 'error') {
+            console.error('Relay error:', msg.error);
+            this.setStatus('Relay error');
+          }
+          return;
+        }
+        
+        // Handle keyexchange from desktop (desktop initiates after reconnect)
+        if (msg.type === 'keyexchange') {
+          console.log('Received keyexchange from desktop');
+          if (this.relayCrypto.setPeerPublicKey(msg.publicKey)) {
+            // Send our public key back
+            this.relayWs.send(JSON.stringify({
+              type: 'keyexchange',
+              publicKey: this.relayCrypto.getPublicKey()
+            }));
+            
+            this.relayEncrypted = true;
+            const verifyCode = this.relayCrypto.getVerificationCode();
+            console.log('E2E encryption re-established! Verification:', verifyCode);
+            
+            this.setStatus('Secure relay connected', true);
+            this.showToast(`Reconnected! Verify: ${verifyCode}`);
+            this.showRelayClientStatus(verifyCode);
+            
+            // Sync chats
+            this.sendChatSyncMeta();
+          }
+          return;
+        }
+        
+        // Handle encrypted messages
+        if (msg.type === 'encrypted' && this.relayEncrypted) {
+          const decrypted = this.relayCrypto.openEnvelope(msg);
+          if (decrypted) {
+            this.handleRelayClientMessage(decrypted);
+          }
+          return;
+        }
+      } catch (e) {
+        console.error('Relay message error:', e);
+      }
+    };
+    
+    this.relayWs.onerror = (error) => {
+      console.error('Relay reconnect error:', error);
+      this.setStatus('Connection error');
+    };
+    
+    this.relayWs.onclose = (event) => {
+      console.log('Relay connection closed:', event.code, event.reason);
+      this.relayEncrypted = false;
+      if (event.reason) {
+        this.setStatus(`Disconnected: ${event.reason}`);
+      } else {
+        this.setStatus('Disconnected');
+      }
+    };
+    
+    return true;
+  }
+  
   // Join relay as client (phone side - scanned QR code)
   async joinRelayAsClient({ server, channel, pubkey }) {
     console.log('Joining relay as client:', { server, channel });
     
-    this.updateStatus('Connecting to relay...');
+    this.setStatus('Connecting to relay...');
     
     // Initialize crypto
     if (typeof RelayCrypto === 'undefined') {
@@ -1735,9 +2361,12 @@ window.CLAWGPT_CONFIG = {
       return;
     }
     
-    // Connect to relay channel
+    // Save relay connection for auto-reconnect on app restart
+    this.saveRelayConnection(server, channel);
+    
+    // Connect to relay room (persistent rooms, not ephemeral channels)
     const wsUrl = server.replace('https://', 'wss://').replace('http://', 'ws://');
-    const channelUrl = `${wsUrl}/channel/${channel}`;
+    const channelUrl = `${wsUrl}/room/${channel}`;
     
     try {
       this.relayWs = new WebSocket(channelUrl);
@@ -1747,29 +2376,8 @@ window.CLAWGPT_CONFIG = {
     }
     
     this.relayWs.onopen = () => {
-      console.log('Connected to relay channel as client');
-      
-      // Send our public key to complete key exchange
-      this.relayWs.send(JSON.stringify({
-        type: 'keyexchange',
-        publicKey: this.relayCrypto.getPublicKey()
-      }));
-      
-      // Mark as encrypted (we already derived shared secret from host's pubkey in QR)
-      this.relayEncrypted = true;
-      
-      // Show verification code
-      const verifyCode = this.relayCrypto.getVerificationCode();
-      console.log('E2E encryption established! Verification:', verifyCode);
-      
-      this.updateStatus('Secure relay connected');
-      this.showToast(`Secure connection! Verify: ${verifyCode}`, 5000);
-      
-      // Display verification in UI
-      this.showRelayClientStatus(verifyCode);
-      
-      // Send our chat metadata to sync
-      this.sendChatSyncMeta();
+      console.log('Connected to relay WebSocket, waiting for room.joined...');
+      // Don't send keyexchange here - wait for room.joined event
     };
     
     this.relayWs.onmessage = (event) => {
@@ -1778,13 +2386,89 @@ window.CLAWGPT_CONFIG = {
         
         // Handle relay control messages
         if (msg.type === 'relay') {
-          if (msg.event === 'channel.joined') {
-            console.log('Joined relay channel:', msg);
+          if (msg.event === 'channel.joined' || msg.event === 'room.joined') {
+            console.log('Joined relay room, sending keyexchange...');
+            // NOW send keyexchange - room is ready
+            this.relayWs.send(JSON.stringify({
+              type: 'keyexchange',
+              publicKey: this.relayCrypto.getPublicKey()
+            }));
+            this.setStatus('Securing connection...');
           } else if (msg.event === 'host.disconnected') {
             this.showToast('Desktop disconnected', true);
-            this.updateStatus('Host disconnected');
+            this.setStatus('Host disconnected');
+            this.relayEncrypted = false; // Reset so we can re-establish encryption
+          } else if (msg.event === 'host.connected') {
+            console.log('Host reconnected, ready for key exchange');
+            this.setStatus('Reconnecting...');
+            this.relayEncrypted = false; // Reset for fresh key exchange
           } else if (msg.event === 'error') {
-            this.showToast(msg.error || 'Relay error', true);
+            const errMsg = msg.error || 'Relay error';
+            console.error('Relay server error:', errMsg);
+            window._clawgptErrors.push('Relay: ' + errMsg);
+            showErrorBanner('Relay: ' + errMsg, false);
+          }
+          return;
+        }
+        
+        // Handle keyexchange-response from desktop (confirms key exchange complete)
+        if (msg.type === 'keyexchange-response' && msg.publicKey) {
+          console.log('Received keyexchange-response from desktop');
+          // Desktop confirmed - NOW we're encrypted
+          this.relayEncrypted = true;
+          
+          const verifyCode = this.relayCrypto.getVerificationCode();
+          console.log('E2E encryption established! Verification:', verifyCode);
+          
+          this.setStatus('Connected', true);
+          this.showToast(`Secure! Verify: ${verifyCode}`);
+          this.showRelayClientStatus(verifyCode);
+          
+          // Close the setup modal
+          const setupModal = document.getElementById('setupModal');
+          if (setupModal) {
+            setupModal.classList.remove('open');
+            setupModal.style.display = 'none';
+          }
+          
+          // Start sync after encryption confirmed
+          this.sendChatSyncMeta();
+          return;
+        }
+        
+        // Handle keyexchange from desktop (desktop initiates on reconnect)
+        if (msg.type === 'keyexchange' && msg.publicKey) {
+          console.log('Received keyexchange from desktop (desktop-initiated)');
+          // Always accept new key exchange (handles reconnection case)
+          if (this.relayCrypto) {
+            // Generate fresh keypair for forward secrecy on reconnect
+            if (this.relayEncrypted) {
+              console.log('Re-keying for reconnection...');
+              this.relayCrypto.generateKeyPair();
+            }
+            if (this.relayCrypto.setPeerPublicKey(msg.publicKey)) {
+              // Respond with our key
+              this.relayWs.send(JSON.stringify({
+                type: 'keyexchange',
+                publicKey: this.relayCrypto.getPublicKey()
+              }));
+              this.relayEncrypted = true;
+              const verifyCode = this.relayCrypto.getVerificationCode();
+              console.log('E2E encryption established! Verification:', verifyCode);
+              
+              this.setStatus('Connected', true);
+              this.showToast(`Secure! Verify: ${verifyCode}`);
+              this.showRelayClientStatus(verifyCode);
+              
+              // Close setup modal
+              const setupModal = document.getElementById('setupModal');
+              if (setupModal) {
+                setupModal.classList.remove('open');
+                setupModal.style.display = 'none';
+              }
+              
+              this.sendChatSyncMeta();
+            }
           }
           return;
         }
@@ -1806,18 +2490,32 @@ window.CLAWGPT_CONFIG = {
     
     this.relayWs.onerror = (error) => {
       console.error('Relay error:', error);
-      this.showToast('Relay connection error', true);
+      const errMsg = 'Relay connection error';
+      window._clawgptErrors.push(errMsg);
+      showErrorBanner(errMsg, false);
     };
     
-    this.relayWs.onclose = () => {
-      console.log('Relay connection closed');
+    this.relayWs.onclose = (event) => {
+      console.log('Relay connection closed:', event.code, event.reason);
       this.relayWs = null;
       this.relayEncrypted = false;
-      this.updateStatus('Relay disconnected');
-      if (this.relayCrypto) {
-        this.relayCrypto.destroy();
-        this.relayCrypto = null;
+      
+      // Show close reason if available (helps debug server errors)
+      if (event.reason) {
+        const errMsg = `Relay closed: ${event.reason}`;
+        console.error(errMsg);
+        window._clawgptErrors.push(errMsg);
+        showErrorBanner(errMsg, true);
+        this.setStatus(errMsg);
+      } else if (event.code !== 1000) {
+        // Abnormal close (1000 = normal)
+        const errMsg = `Relay disconnected (code ${event.code})`;
+        this.setStatus(errMsg);
+      } else {
+        this.setStatus('Relay disconnected');
       }
+      
+      // Don't destroy relayCrypto - may be reused for reconnection
     };
   }
   
@@ -1864,7 +2562,8 @@ window.CLAWGPT_CONFIG = {
   // Connect to gateway through relay (phone side)
   connectViaRelay() {
     console.log('Connecting to gateway via relay proxy...');
-    this.updateStatus('Connecting...');
+    // Don't overwrite status - we're already showing "Connected" from relay connection
+    // The relay IS the secure connection; gateway auth happens through it
     
     // The phone sends messages to relay, desktop forwards to gateway
     // We'll use the relay as our "WebSocket" to gateway
@@ -1902,11 +2601,12 @@ window.CLAWGPT_CONFIG = {
   
   // Show relay client status in UI
   showRelayClientStatus(verifyCode) {
-    // Update status area or show a banner
+    // Update status area - just show "Secure", verification words are in the toast
     const statusEl = document.getElementById('status');
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color: var(--accent-color);">Secure</span> <code style="font-size: 0.8em;">${verifyCode}</code>`;
-      statusEl.title = 'Connected via encrypted relay. Verify this code matches your desktop.';
+      statusEl.textContent = 'Secure';
+      statusEl.classList.add('connected');
+      statusEl.title = `Connected via encrypted relay. Verification: ${verifyCode}`;
     }
   }
   
@@ -1948,7 +2648,7 @@ window.CLAWGPT_CONFIG = {
       urlDisplay.innerHTML = `<strong>Mode:</strong> Remote Relay (E2E Encrypted)<br><strong>Verify:</strong> <code style="font-size: 0.95em; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;">${verifyCode}</code><br><span style="color: var(--accent-color);">Match these words on your phone</span>`;
     }
     
-    this.showToast(`Secure! Verify: ${verifyCode}`, 5000);
+    this.showToast(`Secure! Verify: ${verifyCode}`);
     
     // Now send the auth token encrypted
     this.sendRelayMessage({
@@ -2091,13 +2791,6 @@ window.CLAWGPT_CONFIG = {
       }
       
       this.showToast(`Synced ${merged} chat${merged > 1 ? 's' : ''} from other device`);
-      
-      // Also sync merged chats to OpenClaw agent
-      for (const [id, chat] of Object.entries(incomingChats)) {
-        if (this.chats[id] === chat) {
-          this.syncToAgent(id);
-        }
-      }
     }
   }
   
@@ -2129,9 +2822,6 @@ window.CLAWGPT_CONFIG = {
       }
       
       console.log(`[Sync] Real-time update for chat: ${chat.title || chat.id}`);
-      
-      // Sync to OpenClaw agent
-      this.syncToAgent(chat.id);
     }
   }
   
@@ -2350,6 +3040,54 @@ window.CLAWGPT_CONFIG = {
       saveSettingsBtn.addEventListener('click', () => this.saveAndCloseSettings());
     }
     
+    // Copy logs button (in settings modal)
+    const copyLogsBtn = document.getElementById('copyLogsBtn');
+    if (copyLogsBtn) {
+      copyLogsBtn.addEventListener('click', () => {
+        const fullLog = [
+          '=== ClawGPT Debug Log ===',
+          'Time: ' + new Date().toISOString(),
+          'UserAgent: ' + navigator.userAgent,
+          'Platform: ' + (navigator.platform || 'unknown'),
+          'URL: ' + window.location.href,
+          '',
+          '=== Errors ===',
+          ...(window._clawgptErrors || ['(none)']),
+          '',
+          '=== Recent Logs ===',
+          ...(window._clawgptLogs || ['(none)']).slice(-100)
+        ].join('\n');
+        
+        navigator.clipboard.writeText(fullLog).then(() => {
+          copyLogsBtn.textContent = 'Copied!';
+          setTimeout(() => copyLogsBtn.textContent = 'Copy Logs', 2000);
+        }).catch(() => {
+          // Fallback for mobile
+          const ta = document.createElement('textarea');
+          ta.value = fullLog;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          copyLogsBtn.textContent = 'Copied!';
+          setTimeout(() => copyLogsBtn.textContent = 'Copy Logs', 2000);
+        });
+      });
+    }
+    
+    // Clear logs button
+    const clearLogsBtn = document.getElementById('clearLogsBtn');
+    if (clearLogsBtn) {
+      clearLogsBtn.addEventListener('click', () => {
+        window._clawgptLogs = [];
+        window._clawgptErrors = [];
+        this.updateLogCount();
+        this.showToast('Logs cleared');
+      });
+    }
+    
     // Export/Import buttons
     const exportBtn = document.getElementById('exportChatsBtn');
     const importBtn = document.getElementById('importChatsBtn');
@@ -2383,6 +3121,91 @@ window.CLAWGPT_CONFIG = {
     const showQrBtn = document.getElementById('showQrBtn');
     if (showQrBtn) {
       showQrBtn.addEventListener('click', () => this.showMobileQR());
+    }
+    
+    // QR Code scanning (mobile - scan desktop QR)
+    const scanQrBtn = document.getElementById('scanQrBtn');
+    if (scanQrBtn) {
+      scanQrBtn.addEventListener('click', () => this.scanQRCode());
+    }
+    
+    // Manual setup toggle (mobile)
+    const advancedSetupToggle = document.getElementById('advancedSetupToggle');
+    const advancedSetupFields = document.getElementById('advancedSetupFields');
+    if (advancedSetupToggle && advancedSetupFields) {
+      advancedSetupToggle.addEventListener('click', () => {
+        const isHidden = advancedSetupFields.style.display === 'none';
+        advancedSetupFields.style.display = isHidden ? 'block' : 'none';
+        advancedSetupToggle.classList.toggle('expanded', isHidden);
+      });
+    }
+    
+    // Manual setup connect button
+    const setupSaveBtn = document.getElementById('setupSaveBtn');
+    if (setupSaveBtn) {
+      setupSaveBtn.addEventListener('click', () => this.connectFromSetup());
+    }
+    
+    // Setup screen Copy Logs button
+    const setupCopyLogsBtn = document.getElementById('setupCopyLogsBtn');
+    if (setupCopyLogsBtn) {
+      setupCopyLogsBtn.addEventListener('click', () => {
+        const fullLog = [
+          '=== ClawGPT Debug Log ===',
+          'Time: ' + new Date().toISOString(),
+          'UserAgent: ' + navigator.userAgent,
+          'Platform: ' + (navigator.platform || 'unknown'),
+          'URL: ' + window.location.href,
+          '',
+          '=== Errors ===',
+          ...(window._clawgptErrors || ['(none)']),
+          '',
+          '=== Recent Logs ===',
+          ...(window._clawgptLogs || ['(none)']).slice(-100)
+        ].join('\n');
+        
+        navigator.clipboard.writeText(fullLog).then(() => {
+          setupCopyLogsBtn.textContent = 'Copied!';
+          setTimeout(() => setupCopyLogsBtn.textContent = 'Copy Logs', 2000);
+        }).catch(() => {
+          // Fallback
+          const ta = document.createElement('textarea');
+          ta.value = fullLog;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          setupCopyLogsBtn.textContent = 'Copied!';
+          setTimeout(() => setupCopyLogsBtn.textContent = 'Copy Logs', 2000);
+        });
+      });
+    }
+    
+    // Setup screen Reset button - clears saved connection settings
+    const setupResetBtn = document.getElementById('setupResetBtn');
+    if (setupResetBtn) {
+      setupResetBtn.addEventListener('click', () => {
+        if (confirm('Clear all saved connection settings? You will need to scan QR again.')) {
+          // Clear connection-related localStorage items
+          localStorage.removeItem('clawgpt-settings');
+          localStorage.removeItem('clawgpt-pairing-id');
+          localStorage.removeItem('clawgpt-relay-server');
+          localStorage.removeItem('clawgpt-relay-room');
+          
+          // Clear memory
+          this.gatewayUrl = 'ws://127.0.0.1:18789';
+          this.authToken = '';
+          
+          // Close any existing connections
+          if (this.ws) { this.ws.close(); this.ws = null; }
+          if (this.relayWs) { this.relayWs.close(); this.relayWs = null; }
+          
+          this.showToast('Settings cleared');
+          
+          // Reload to start fresh
+          setTimeout(() => window.location.reload(), 500);
+        }
+      });
     }
     
     this.elements.menuBtn.addEventListener('click', () => this.toggleSidebar());
@@ -2663,6 +3486,22 @@ window.CLAWGPT_CONFIG = {
     this.updateSettingsButtons();
     this.updateSettingsForConfigMode();
     this.updateFileMemoryUI();
+    this.updateLogCount();
+  }
+  
+  updateLogCount() {
+    const logCountEl = document.getElementById('logCount');
+    if (logCountEl) {
+      const errorCount = window._clawgptErrors?.length || 0;
+      const logCount = window._clawgptLogs?.length || 0;
+      if (errorCount > 0) {
+        logCountEl.textContent = `Logs: ${logCount} entries, ${errorCount} errors`;
+        logCountEl.style.color = 'var(--error-color, #e74c3c)';
+      } else {
+        logCountEl.textContent = `Logs: ${logCount} entries`;
+        logCountEl.style.color = '';
+      }
+    }
   }
   
   updateSettingsForConfigMode() {
@@ -5547,72 +6386,6 @@ Example: [0, 2, 5]`;
     
     // Check if we should generate/update summary
     this.maybeGenerateSummary(this.currentChatId);
-    
-    // Sync to OpenClaw agent for persistent memory
-    this.syncToAgent(this.currentChatId);
-  }
-
-  // ===== AGENT MEMORY SYNC =====
-  // Syncs conversations to ~/clawgpt/clawgpt-memory/ via OpenClaw agent
-  // See SYNC.md for protocol details
-  
-  async syncToAgent(chatId) {
-    // Only sync if connected to gateway
-    const directConnected = this.ws && this.ws.readyState === WebSocket.OPEN;
-    const relayConnected = this.relayIsGatewayProxy && this.relayWs && this.relayWs.readyState === WebSocket.OPEN;
-    
-    if (!directConnected && !relayConnected) {
-      return;
-    }
-    
-    const chat = this.chats[chatId];
-    if (!chat || !chat.messages || chat.messages.length === 0) return;
-    
-    // Get last synced index for this chat
-    const syncKey = `clawgpt-synced-${chatId}`;
-    const lastSynced = parseInt(localStorage.getItem(syncKey) || '-1');
-    
-    // Get unsynced messages
-    const unsyncedMessages = [];
-    for (let i = lastSynced + 1; i < chat.messages.length; i++) {
-      const msg = chat.messages[i];
-      unsyncedMessages.push({
-        id: `${chatId}-${i}`,
-        chatId: chatId,
-        chatTitle: chat.title || chat.messages[0]?.content?.substring(0, 50) || 'Untitled',
-        role: msg.role,
-        content: msg.content || '',
-        timestamp: msg.timestamp || Date.now()
-      });
-    }
-    
-    if (unsyncedMessages.length === 0) return;
-    
-    // Send sync message to agent
-    const syncPayload = {
-      messages: unsyncedMessages,
-      deviceId: this.getDeviceId(),
-      syncedAt: Date.now()
-    };
-    
-    // Send as a chat message with special prefix
-    // Agent will recognize this and write to files, responding with NO_REPLY
-    const syncMessage = `[CLAWGPT-SYNC]\n${JSON.stringify(syncPayload)}`;
-    
-    try {
-      await this.request('chat.send', {
-        sessionKey: this.sessionKey,
-        message: syncMessage,
-        idempotencyKey: `sync-${chatId}-${Date.now()}`
-      });
-      
-      // Mark as synced
-      localStorage.setItem(syncKey, String(chat.messages.length - 1));
-      console.log(`[Sync] Sent ${unsyncedMessages.length} messages to agent for chat: ${chat.title || chatId}`);
-    } catch (err) {
-      console.warn('[Sync] Failed to sync to agent:', err);
-      // Don't mark as synced - will retry next time
-    }
   }
 
   // ===== LAYER 2: SMART SUMMARIES =====
