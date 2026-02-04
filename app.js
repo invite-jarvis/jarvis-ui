@@ -716,6 +716,34 @@ class ClawGPT {
     } else {
       this.autoConnect();
     }
+    
+    // Auto-reconnect to relay room if we have a saved pairing ID
+    this.autoReconnectRelay();
+  }
+  
+  // Auto-reconnect to saved relay room (for persistent mobile connection)
+  async autoReconnectRelay() {
+    const pairingId = localStorage.getItem('clawgpt-pairing-id');
+    if (!pairingId) return;
+    
+    console.log('Auto-reconnecting to relay room:', pairingId);
+    
+    // Initialize crypto
+    if (typeof RelayCrypto === 'undefined') {
+      console.warn('RelayCrypto not available for auto-reconnect');
+      return;
+    }
+    
+    this.relayCrypto = new RelayCrypto();
+    
+    const relayUrl = this.relayServerUrl || 'wss://clawgpt-relay.fly.dev';
+    
+    try {
+      await this.connectToRelayRoom(relayUrl, pairingId);
+      console.log('Auto-reconnected to relay room');
+    } catch (err) {
+      console.warn('Failed to auto-reconnect to relay:', err);
+    }
   }
   
   // Try to connect without auth - returns true if gateway accepts unauthenticated connections
@@ -2065,6 +2093,13 @@ window.CLAWGPT_CONFIG = {
       }
       
       this.showToast(`Synced ${merged} chat${merged > 1 ? 's' : ''} from other device`);
+      
+      // Also sync merged chats to OpenClaw agent
+      for (const [id, chat] of Object.entries(incomingChats)) {
+        if (this.chats[id] === chat) {
+          this.syncToAgent(id);
+        }
+      }
     }
   }
   
@@ -2096,6 +2131,9 @@ window.CLAWGPT_CONFIG = {
       }
       
       console.log(`[Sync] Real-time update for chat: ${chat.title || chat.id}`);
+      
+      // Sync to OpenClaw agent
+      this.syncToAgent(chat.id);
     }
   }
   
@@ -5511,6 +5549,72 @@ Example: [0, 2, 5]`;
     
     // Check if we should generate/update summary
     this.maybeGenerateSummary(this.currentChatId);
+    
+    // Sync to OpenClaw agent for persistent memory
+    this.syncToAgent(this.currentChatId);
+  }
+
+  // ===== AGENT MEMORY SYNC =====
+  // Syncs conversations to ~/clawgpt/clawgpt-memory/ via OpenClaw agent
+  // See SYNC.md for protocol details
+  
+  async syncToAgent(chatId) {
+    // Only sync if connected to gateway
+    const directConnected = this.ws && this.ws.readyState === WebSocket.OPEN;
+    const relayConnected = this.relayIsGatewayProxy && this.relayWs && this.relayWs.readyState === WebSocket.OPEN;
+    
+    if (!directConnected && !relayConnected) {
+      return;
+    }
+    
+    const chat = this.chats[chatId];
+    if (!chat || !chat.messages || chat.messages.length === 0) return;
+    
+    // Get last synced index for this chat
+    const syncKey = `clawgpt-synced-${chatId}`;
+    const lastSynced = parseInt(localStorage.getItem(syncKey) || '-1');
+    
+    // Get unsynced messages
+    const unsyncedMessages = [];
+    for (let i = lastSynced + 1; i < chat.messages.length; i++) {
+      const msg = chat.messages[i];
+      unsyncedMessages.push({
+        id: `${chatId}-${i}`,
+        chatId: chatId,
+        chatTitle: chat.title || chat.messages[0]?.content?.substring(0, 50) || 'Untitled',
+        role: msg.role,
+        content: msg.content || '',
+        timestamp: msg.timestamp || Date.now()
+      });
+    }
+    
+    if (unsyncedMessages.length === 0) return;
+    
+    // Send sync message to agent
+    const syncPayload = {
+      messages: unsyncedMessages,
+      deviceId: this.getDeviceId(),
+      syncedAt: Date.now()
+    };
+    
+    // Send as a chat message with special prefix
+    // Agent will recognize this and write to files, responding with NO_REPLY
+    const syncMessage = `[CLAWGPT-SYNC]\n${JSON.stringify(syncPayload)}`;
+    
+    try {
+      await this.request('chat.send', {
+        sessionKey: this.sessionKey,
+        message: syncMessage,
+        idempotencyKey: `sync-${chatId}-${Date.now()}`
+      });
+      
+      // Mark as synced
+      localStorage.setItem(syncKey, String(chat.messages.length - 1));
+      console.log(`[Sync] Sent ${unsyncedMessages.length} messages to agent for chat: ${chat.title || chatId}`);
+    } catch (err) {
+      console.warn('[Sync] Failed to sync to agent:', err);
+      // Don't mark as synced - will retry next time
+    }
   }
 
   // ===== LAYER 2: SMART SUMMARIES =====
