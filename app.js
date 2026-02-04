@@ -937,26 +937,14 @@ class ClawGPT {
     }
   }
   
-  // Prompt user to set up file memory on first run
+  // Prompt user to set up file memory (shown as toast, not blocking popup)
   async promptFileMemorySetup() {
-    // Mark that we've asked (so we don't ask again)
+    // Mark that we've asked (so we don't prompt again)
     localStorage.setItem('clawgpt-memory-asked', 'true');
     
-    // Show a toast explaining the feature
-    this.showToast('Tip: Set up cross-device memory in Settings', 5000);
-    
-    // Auto-open settings after a short delay on first run
-    setTimeout(() => {
-      const shouldSetup = confirm(
-        'ClawGPT can sync your conversations across devices.\n\n' +
-        'To enable this, select a folder called "clawgpt-memory" in your ClawGPT directory.\n\n' +
-        'Set up now?'
-      );
-      
-      if (shouldSetup) {
-        this.enableFileMemoryStorage();
-      }
-    }, 2000);
+    // Just show a non-intrusive toast - users can set it up in Settings later
+    // The main setup wizard already includes the memory folder step
+    this.showToast('Tip: Set up cross-device memory in Settings → Cross-Device Memory', 5000);
   }
   
   // Enable file memory storage (user selects directory)
@@ -973,6 +961,30 @@ class ClawGPT {
     }
     
     return success;
+  }
+  
+  // Handle memory folder setup in the setup wizard
+  async handleSetupMemory() {
+    const success = await this.fileMemoryStorage.selectDirectory();
+    const statusEl = document.getElementById('setupMemoryStatus');
+    
+    if (success) {
+      // Mark as done so we don't prompt again
+      localStorage.setItem('clawgpt-memory-asked', 'true');
+      
+      if (statusEl) {
+        statusEl.textContent = `✓ ${this.fileMemoryStorage.getDirectoryName()} selected`;
+        statusEl.style.color = 'var(--accent-color)';
+      }
+      
+      // Sync existing chats if any
+      const count = await this.fileMemoryStorage.syncAllChats(this.chats);
+      if (count > 0) {
+        this.showToast(`Synced ${count} messages`);
+      }
+    } else if (statusEl) {
+      statusEl.textContent = '';
+    }
   }
   
   // Update file memory UI elements
@@ -1038,6 +1050,12 @@ class ClawGPT {
     }
     if (getTokenBtn) {
       getTokenBtn.addEventListener('click', () => this.openControlPanel());
+    }
+    
+    // Memory folder setup button
+    const memoryBtn = document.getElementById('setupMemoryBtn');
+    if (memoryBtn) {
+      memoryBtn.addEventListener('click', () => this.handleSetupMemory());
     }
     
     // Copy buttons

@@ -3039,3 +3039,44 @@ body {
   margin-bottom: 24px;
   color: var(--text-secondary);
 }
+
+/* Setup memory step */
+.setup-step-badge {
+  font-size: 11px;
+  background: var(--accent-color, #10a37f);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.setup-memory-desc {
+  font-size: 14px;
+  color: var(--text-secondary, #888);
+  margin: 0 0 12px 0;
+}
+
+.setup-memory-btn {
+  margin-bottom: 8px;
+}
+
+.setup-memory-status {
+  display: block;
+  font-size: 13px;
+  color: var(--accent-color, #10a37f);
+  margin-bottom: 8px;
+}
+
+.setup-memory-hint {
+  font-size: 12px;
+  color: var(--text-muted, #666);
+  margin: 0;
+}
+
+.setup-memory-hint code {
+  background: var(--bg-color, #1a1a1a);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
