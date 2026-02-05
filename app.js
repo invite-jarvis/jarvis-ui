@@ -1401,7 +1401,26 @@ class ClawGPT {
       this.showToast(`Memory folder: ${this.fileMemoryStorage.getDirectoryName()}`);
       this.updateFileMemoryUI();
       
-      // Sync all chats to the new folder
+      // Load chats FROM the memory folder (for new instances)
+      try {
+        const memoryChats = await this.fileMemoryStorage.loadFromMemory();
+        let loaded = 0;
+        for (const [chatId, chat] of Object.entries(memoryChats)) {
+          if (!this.chats[chatId]) {
+            this.chats[chatId] = chat;
+            loaded++;
+          }
+        }
+        if (loaded > 0) {
+          this.showToast(`Loaded ${loaded} chats from memory`);
+          this.storage.saveAll(this.chats);
+          this.renderChatList();
+        }
+      } catch (e) {
+        console.warn('Failed to load from memory folder:', e);
+      }
+      
+      // Sync all current chats TO the folder
       const count = await this.fileMemoryStorage.syncAllChats(this.chats);
       this.showToast(`Synced ${count} messages to disk`);
     }
