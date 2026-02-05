@@ -1372,20 +1372,50 @@ class ClawGPT {
     // Mark that we've asked (so we don't ask again)
     localStorage.setItem('clawgpt-memory-asked', 'true');
     
-    // Show a toast explaining the feature
-    this.showToast('Tip: Set up cross-device memory in Settings', 5000);
+    // Show custom modal (preserves user gesture for file picker)
+    const modal = document.getElementById('memorySetupModal');
+    const confirmBtn = document.getElementById('memorySetupConfirm');
+    const skipBtn = document.getElementById('memorySetupSkip');
     
-    // Auto-open settings after a short delay on first run
+    if (!modal || !confirmBtn || !skipBtn) {
+      console.log('Memory setup modal not found');
+      return;
+    }
+    
+    // Show modal after short delay
     setTimeout(() => {
-      const shouldSetup = confirm(
-        'ClawGPT can sync your conversations across devices.\n\n' +
-        'Click OK, then select the "clawgpt-memory" folder in your Documents.\n\n' +
-        'Set up now?'
-      );
+      modal.classList.add('open');
       
-      if (shouldSetup) {
+      // Handle confirm - directly triggers file picker (preserves user gesture)
+      const handleConfirm = () => {
+        modal.classList.remove('open');
         this.enableFileMemoryStorage();
-      }
+        cleanup();
+      };
+      
+      // Handle skip
+      const handleSkip = () => {
+        modal.classList.remove('open');
+        cleanup();
+      };
+      
+      // Handle click outside
+      const handleOutside = (e) => {
+        if (e.target === modal) {
+          modal.classList.remove('open');
+          cleanup();
+        }
+      };
+      
+      const cleanup = () => {
+        confirmBtn.removeEventListener('click', handleConfirm);
+        skipBtn.removeEventListener('click', handleSkip);
+        modal.removeEventListener('click', handleOutside);
+      };
+      
+      confirmBtn.addEventListener('click', handleConfirm);
+      skipBtn.addEventListener('click', handleSkip);
+      modal.addEventListener('click', handleOutside);
     }, 1000);
   }
   
