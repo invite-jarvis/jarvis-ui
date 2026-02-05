@@ -6586,6 +6586,7 @@ Example: [0, 2, 5]`;
     if (!payload) return;
     
     console.log('Chat event received:', payload.state, 'sessionKey:', payload.sessionKey);
+    console.log('Raw payload:', JSON.stringify(payload).substring(0, 500));
 
     const state = payload.state;
     const content = this.extractContent(payload.message?.content);
