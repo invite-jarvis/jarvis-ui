@@ -355,10 +355,10 @@ class FileMemoryStorage {
 
   async selectDirectory(isAutoSetup = false) {
     try {
-      // Start in Documents folder where clawgpt-memory should be located
+      // Start in Desktop folder (Documents doesn't work reliably on Linux)
       const options = {
         mode: 'readwrite',
-        startIn: 'documents'
+        startIn: 'desktop'
       };
       
       this.dirHandle = await window.showDirectoryPicker(options);
