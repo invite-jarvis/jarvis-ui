@@ -6583,6 +6583,8 @@ Example: [0, 2, 5]`;
 
   handleChatEvent(payload) {
     if (!payload) return;
+    
+    console.log('Chat event received:', payload.state, 'sessionKey:', payload.sessionKey);
 
     const state = payload.state;
     const content = this.extractContent(payload.message?.content);
@@ -6604,6 +6606,7 @@ Example: [0, 2, 5]`;
     }
 
     if (payload.sessionKey && payload.sessionKey !== this.sessionKey) {
+      console.log('Ignoring event for different session:', payload.sessionKey, 'vs', this.sessionKey);
       return; // Different session
     }
 
