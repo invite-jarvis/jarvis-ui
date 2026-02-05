@@ -1379,14 +1379,14 @@ class ClawGPT {
     setTimeout(() => {
       const shouldSetup = confirm(
         'ClawGPT can sync your conversations across devices.\n\n' +
-        'To enable this, select a folder called "clawgpt-memory" in your ClawGPT directory.\n\n' +
+        'Click OK, then select the "clawgpt-memory" folder in your Documents.\n\n' +
         'Set up now?'
       );
       
       if (shouldSetup) {
         this.enableFileMemoryStorage();
       }
-    }, 2000);
+    }, 1000);
   }
   
   // Enable file memory storage (user selects directory)
