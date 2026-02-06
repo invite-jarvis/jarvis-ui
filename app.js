@@ -1370,19 +1370,8 @@ class ClawGPT {
         console.log(`File memory: synced ${count} messages to disk`);
       }
     } else if (!this.isMobile) {
-      // Desktop only: prompt for folder selection or import on first run
-      const hasAskedForMemory = localStorage.getItem('clawgpt-memory-asked');
-      if (!hasAskedForMemory) {
-        if ('showDirectoryPicker' in window) {
-          // Chrome: use folder sync
-          this.promptFileMemorySetup();
-        } else {
-          // Firefox/Brave: prompt for import instead
-          this.promptImportSetup();
-        }
-      } else {
-        console.log('File memory storage not enabled (select folder in settings)');
-      }
+      // Feature available in Settings, no auto-prompt (less confusing for new users)
+      console.log('File memory storage available in Settings');
     }
   }
   
