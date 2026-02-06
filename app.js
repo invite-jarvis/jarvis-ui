@@ -2195,13 +2195,13 @@ window.CLAWGPT_CONFIG = {
   
   // Handle message from phone - create chat if needed and forward to gateway
   handlePhoneMessage(msg) {
-    const { chatId, content } = msg;
+    const { chatId, content, attachments } = msg;
     
     // Create chat if it doesn't exist
     if (!this.chats[chatId]) {
       this.chats[chatId] = {
         id: chatId,
-        title: content.substring(0, 30) + (content.length > 30 ? '...' : ''),
+        title: (content || 'Image').substring(0, 30) + ((content || '').length > 30 ? '...' : ''),
         createdAt: Date.now(),
         updatedAt: Date.now(),
         messages: []
@@ -2212,10 +2212,10 @@ window.CLAWGPT_CONFIG = {
     this.currentChatId = chatId;
     
     // Use robust sending with retry logic
-    this.sendPhoneMessageWithRetry(content, chatId);
+    this.sendPhoneMessageWithRetry(content, chatId, attachments);
   }
 
-  async sendPhoneMessageWithRetry(content, chatId, retryCount = 0) {
+  async sendPhoneMessageWithRetry(content, chatId, attachments = null, retryCount = 0) {
     const maxRetries = 2; // Conservative: only 2 retries to avoid long waits
     const retryDelay = 1500; // 1.5 seconds between retries
     
@@ -2224,7 +2224,7 @@ window.CLAWGPT_CONFIG = {
       if (this.streaming) {
         console.log('Already streaming, queuing phone message');
         if (!this.phoneMessageQueue) this.phoneMessageQueue = [];
-        this.phoneMessageQueue.push({ content, chatId, timestamp: Date.now() });
+        this.phoneMessageQueue.push({ content, chatId, attachments, timestamp: Date.now() });
         
         // Notify phone that message is queued
         if (this.relayEncrypted) {
@@ -2261,7 +2261,7 @@ window.CLAWGPT_CONFIG = {
             
             // Wait and retry
             setTimeout(() => {
-              this.sendPhoneMessageWithRetry(content, chatId, retryCount + 1);
+              this.sendPhoneMessageWithRetry(content, chatId, attachments, retryCount + 1);
             }, retryDelay);
             return;
           } else {
@@ -2295,6 +2295,15 @@ window.CLAWGPT_CONFIG = {
       }
       
       // Call original sendMessage (this adds user message and starts streaming)
+      // If we have attachments from phone, temporarily set them as pending
+      if (attachments && attachments.length > 0) {
+        // Convert relay attachments to pendingImages format
+        this.pendingImages = attachments.map(att => ({
+          base64: `data:${att.mimeType};base64,${att.content}`,
+          mimeType: att.mimeType,
+          name: 'image'
+        }));
+      }
       this.sendMessage(content);
       
     } catch (error) {
@@ -6088,7 +6097,7 @@ Example: [0, 2, 5]`;
         
         // Small delay to let UI update, then process next phone message
         setTimeout(() => {
-          this.sendPhoneMessageWithRetry(nextMessage.content, nextMessage.chatId);
+          this.sendPhoneMessageWithRetry(nextMessage.content, nextMessage.chatId, nextMessage.attachments);
         }, 200); // Slightly longer delay to avoid conflicts with regular queue
       }
     }
