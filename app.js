@@ -48,12 +48,13 @@ class ClawGPT {
     this.tokenRateWindow = 60000; // 1 minute window
 
     // Task tracking
-    this.activeTasks = new Map();
-    this.taskHistory = [];
-    this.manualTasks = new Map();
+    this.taskStorage = new TaskStorage();
+    this.tasks = new Map();
     this.taskIdCounter = 0;
     this.currentMessageTaskId = null;
     this.taskUpdateInterval = null;
+    this.taskFilter = { tab: 'user', status: 'all', priority: 'all', sortBy: 'updatedAt' };
+    this.currentDetailTaskId = null;
 
     // Jarvis holographic visualization
     this.jarvisViz = null;
@@ -70,7 +71,11 @@ class ClawGPT {
     this.renderChatList();
 
     // Initialize task storage
-    await this.initTaskStorage();
+    await this.taskStorage.init();
+    await this.loadTasks();
+    this.checkRecurringTasks();
+    this.startTaskListUpdates();
+    this.renderTaskList();
 
     // Sync existing chats to clawgpt-memory (background)
     this.syncMemoryStorage();
@@ -3123,6 +3128,67 @@ window.CLAWGPT_CONFIG = {
       closeTaskModal.addEventListener('click', () => this.closeTaskModal());
     }
 
+    // Task tabs
+    document.querySelectorAll('.task-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.task-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        this.taskFilter.tab = tab.dataset.tab;
+        const isPast = tab.dataset.tab === 'past';
+        const toolbar = document.querySelector('.task-toolbar');
+        const createBtn = document.getElementById('createTaskBtn');
+        if (toolbar) toolbar.style.display = isPast ? 'none' : '';
+        if (createBtn) createBtn.style.display = isPast ? 'none' : '';
+        this.renderTaskList();
+      });
+    });
+
+    // Task filters
+    const taskFilterStatus = document.getElementById('taskFilterStatus');
+    if (taskFilterStatus) {
+      taskFilterStatus.addEventListener('change', () => {
+        this.taskFilter.status = taskFilterStatus.value;
+        this.renderTaskList();
+      });
+    }
+
+    const taskFilterPriority = document.getElementById('taskFilterPriority');
+    if (taskFilterPriority) {
+      taskFilterPriority.addEventListener('change', () => {
+        this.taskFilter.priority = taskFilterPriority.value;
+        this.renderTaskList();
+      });
+    }
+
+    const taskSort = document.getElementById('taskSort');
+    if (taskSort) {
+      taskSort.addEventListener('change', () => {
+        this.taskFilter.sortBy = taskSort.value;
+        this.renderTaskList();
+      });
+    }
+
+    // Task detail modal
+    const closeTaskDetail = document.getElementById('closeTaskDetail');
+    if (closeTaskDetail) {
+      closeTaskDetail.addEventListener('click', () => this.closeTaskDetail());
+    }
+
+    const saveTaskDetailBtn = document.getElementById('saveTaskDetailBtn');
+    if (saveTaskDetailBtn) {
+      saveTaskDetailBtn.addEventListener('click', () => this.saveTaskDetail());
+    }
+
+    const deleteTaskBtn = document.getElementById('deleteTaskBtn');
+    if (deleteTaskBtn) {
+      deleteTaskBtn.addEventListener('click', () => {
+        if (this.currentDetailTaskId && confirm('Delete this task?')) {
+          this.deleteTask(this.currentDetailTaskId);
+          this.closeTaskDetail();
+        }
+      });
+    }
+
     // Render chat list
     this.renderChatList();
   }
@@ -4346,6 +4412,12 @@ Example: [0, 2, 5]`;
         : msg.content;
       return `${role}: ${content}`;
     });
+
+    // Append active task context for Jarvis awareness
+    const taskContext = this.buildTaskContext();
+    if (taskContext) {
+      contextLines.push('[Active Tasks]\n' + taskContext);
+    }
 
     return contextLines.join('\n\n');
   }
@@ -6147,8 +6219,11 @@ Example: [0, 2, 5]`;
     const taskTitle = text ? `Message: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}` : 'Image message';
     this.currentMessageTaskId = this.createTask({
       type: 'message_send',
+      assignee: 'jarvis',
       title: taskTitle,
       status: 'active',
+      priority: 'low',
+      tags: ['auto', 'message'],
       metadata: {
         model: this.currentModelId,
         estimatedTokens: this.estimateTokens(text || '')
@@ -6443,6 +6518,8 @@ Example: [0, 2, 5]`;
         // Track output tokens
         this.addTokens(this.estimateTokens(finalContent));
         this.addAssistantMessage(finalContent);
+        // Parse any Jarvis task commands from the response
+        this.parseJarvisTaskCommands(finalContent);
         // Complete task successfully
         if (this.currentMessageTaskId) {
           this.completeTask(this.currentMessageTaskId, { success: true });
@@ -6792,29 +6869,14 @@ Return this exact JSON structure:
   // TASK TRACKING SYSTEM
   // ========================================
 
-  async initTaskStorage() {
-    try {
-      const stored = localStorage.getItem('clawgpt-tasks');
-      if (stored) {
-        const data = JSON.parse(stored);
-        this.taskHistory = data.history || [];
-
-        // Restore manual tasks
-        if (data.manualTasks) {
-          data.manualTasks.forEach(task => {
-            this.manualTasks.set(task.id, task);
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Failed to load tasks:', err);
+  async loadTasks() {
+    const all = await this.taskStorage.loadAll();
+    this.tasks = new Map(Object.entries(all));
+    for (const id of this.tasks.keys()) {
+      const match = id.match(/^task-(\d+)-/);
+      if (match) this.taskIdCounter = Math.max(this.taskIdCounter, parseInt(match[1]));
     }
-
-    this.renderTaskList();
     this.renderFileGrid();
-
-    // Start task list update interval (refresh durations every 5 seconds)
-    this.startTaskListUpdates();
   }
 
   startTaskListUpdates() {
@@ -6823,190 +6885,535 @@ Return this exact JSON structure:
     }
 
     this.taskUpdateInterval = setInterval(() => {
-      // Only re-render if there are active tasks
-      const hasActiveTasks = this.activeTasks.size > 0 ||
-        Array.from(this.manualTasks.values()).some(t => t.status !== 'completed');
-
-      if (hasActiveTasks) {
+      const hasActive = Array.from(this.tasks.values()).some(t =>
+        ['active', 'in_progress', 'pending', 'waiting'].includes(t.status)
+      );
+      if (hasActive) {
         this.renderTaskList();
       }
-    }, 5000); // Update every 5 seconds
-  }
-
-  saveTaskStorage() {
-    try {
-      const data = {
-        history: this.taskHistory.slice(-100),
-        manualTasks: Array.from(this.manualTasks.values())
-      };
-      localStorage.setItem('clawgpt-tasks', JSON.stringify(data));
-    } catch (err) {
-      console.error('Failed to save tasks:', err);
-    }
+    }, 5000);
   }
 
   createTask(options) {
     const taskId = `task-${++this.taskIdCounter}-${Date.now()}`;
     const task = {
       id: taskId,
-      type: options.type || 'manual',
-      status: options.status || 'active',
       title: options.title || 'Untitled Task',
+      description: options.description || '',
+      status: options.status || 'pending',
+      assignee: options.assignee || 'user',
+      type: options.type || 'manual',
+      priority: options.priority || 'medium',
+      dueDate: options.dueDate || null,
+      tags: options.tags || [],
+      subtasks: options.subtasks || [],
+      dependencies: options.dependencies || [],
+      notes: options.notes || [],
+      recurrence: options.recurrence || 'none',
+      recurrenceConfig: options.recurrenceConfig || null,
       chatId: options.chatId || this.currentChatId,
-      startTime: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      startTime: ['active', 'in_progress'].includes(options.status) ? Date.now() : null,
       endTime: null,
+      result: null,
       metadata: options.metadata || {}
     };
 
-    if (options.type === 'manual') {
-      this.manualTasks.set(taskId, task);
-    } else {
-      this.activeTasks.set(taskId, task);
-    }
-
-    this.taskHistory.unshift(task);
-    this.saveTaskStorage();
+    this.tasks.set(taskId, task);
+    this.taskStorage.saveOne(task);
     this.renderTaskList();
     this.renderFileGrid();
+    this.syncTasksToMemory();
 
     return taskId;
   }
 
   updateTask(taskId, updates) {
-    let task = this.activeTasks.get(taskId) || this.manualTasks.get(taskId);
+    const task = this.tasks.get(taskId);
     if (!task) return;
 
-    Object.assign(task, updates);
+    Object.assign(task, updates, { updatedAt: Date.now() });
 
-    const historyIndex = this.taskHistory.findIndex(t => t.id === taskId);
-    if (historyIndex >= 0) {
-      this.taskHistory[historyIndex] = task;
+    if (['active', 'in_progress'].includes(updates.status) && !task.startTime) {
+      task.startTime = Date.now();
     }
 
-    this.saveTaskStorage();
+    this.tasks.set(taskId, task);
+    this.taskStorage.saveOne(task);
     this.renderTaskList();
     this.renderFileGrid();
+    this.syncTasksToMemory();
   }
 
   completeTask(taskId, result = {}) {
-    this.updateTask(taskId, {
-      status: result.success === false ? 'failed' : 'completed',
-      endTime: Date.now(),
-      result: result
-    });
+    const task = this.tasks.get(taskId);
+    if (!task) return;
 
-    if (this.activeTasks.has(taskId)) {
-      this.activeTasks.delete(taskId);
+    task.status = result.success === false ? 'failed' : 'completed';
+    task.endTime = Date.now();
+    task.result = result;
+    task.updatedAt = Date.now();
+
+    this.tasks.set(taskId, task);
+    this.taskStorage.saveOne(task);
+
+    // Handle recurrence
+    if (task.recurrence !== 'none' && task.status === 'completed') {
+      this.spawnNextRecurrence(task);
+    }
+
+    this.renderTaskList();
+    this.renderFileGrid();
+    this.syncTasksToMemory();
+  }
+
+  deleteTask(taskId) {
+    this.tasks.delete(taskId);
+    this.taskStorage.deleteOne(taskId);
+    this.renderTaskList();
+    this.renderFileGrid();
+    this.syncTasksToMemory();
+  }
+
+  addSubtask(taskId, title) {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    const sub = { id: `sub-${Date.now()}`, title, status: 'pending', completedAt: null };
+    task.subtasks.push(sub);
+    task.updatedAt = Date.now();
+    this.tasks.set(taskId, task);
+    this.taskStorage.saveOne(task);
+    this.renderTaskList();
+    if (this.currentDetailTaskId === taskId) this.renderTaskDetail(task);
+  }
+
+  toggleSubtask(taskId, subtaskId) {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    const sub = task.subtasks.find(s => s.id === subtaskId);
+    if (!sub) return;
+    sub.status = sub.status === 'completed' ? 'pending' : 'completed';
+    sub.completedAt = sub.status === 'completed' ? Date.now() : null;
+    task.updatedAt = Date.now();
+    this.tasks.set(taskId, task);
+    this.taskStorage.saveOne(task);
+    this.renderTaskList();
+    if (this.currentDetailTaskId === taskId) this.renderTaskDetail(task);
+  }
+
+  removeSubtask(taskId, subtaskId) {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    task.subtasks = task.subtasks.filter(s => s.id !== subtaskId);
+    task.updatedAt = Date.now();
+    this.tasks.set(taskId, task);
+    this.taskStorage.saveOne(task);
+    if (this.currentDetailTaskId === taskId) this.renderTaskDetail(task);
+  }
+
+  addTaskNote(taskId, text, author = 'user') {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    task.notes.push({ id: `note-${Date.now()}`, text, author, timestamp: Date.now() });
+    task.updatedAt = Date.now();
+    this.tasks.set(taskId, task);
+    this.taskStorage.saveOne(task);
+    if (this.currentDetailTaskId === taskId) this.renderTaskDetail(task);
+  }
+
+  checkRecurringTasks() {
+    const now = new Date();
+    for (const task of this.tasks.values()) {
+      if (task.recurrence !== 'none' && task.status === 'completed') {
+        const nextDue = task.recurrenceConfig?.nextDue;
+        if (nextDue && new Date(nextDue) <= now) {
+          // Only spawn if no existing pending task with same title + recurrence
+          const alreadyExists = Array.from(this.tasks.values()).some(t =>
+            t.title === task.title && t.recurrence === task.recurrence &&
+            ['pending', 'active', 'in_progress', 'waiting'].includes(t.status)
+          );
+          if (!alreadyExists) {
+            this.spawnNextRecurrence(task);
+          }
+        }
+      }
     }
   }
+
+  spawnNextRecurrence(completedTask) {
+    const nextDue = this.calculateNextDue(completedTask);
+    this.createTask({
+      title: completedTask.title,
+      description: completedTask.description,
+      assignee: completedTask.assignee,
+      priority: completedTask.priority,
+      tags: [...completedTask.tags],
+      recurrence: completedTask.recurrence,
+      recurrenceConfig: { ...completedTask.recurrenceConfig, nextDue },
+      dueDate: nextDue,
+      status: 'pending'
+    });
+  }
+
+  calculateNextDue(task) {
+    const base = task.dueDate ? new Date(task.dueDate) : new Date();
+    if (task.recurrence === 'daily') base.setDate(base.getDate() + 1);
+    else if (task.recurrence === 'weekly') base.setDate(base.getDate() + 7);
+    return base.toISOString().split('T')[0];
+  }
+
+  // ========================================
+  // TASK RENDERING
+  // ========================================
 
   renderTaskList() {
     const taskListEl = document.getElementById('taskList');
     if (!taskListEl) return;
 
-    // Gather all tasks
-    const allTasks = [
-      ...Array.from(this.activeTasks.values()),
-      ...Array.from(this.manualTasks.values())
-    ];
+    const { tab, status, priority, sortBy } = this.taskFilter;
+    const isPastTab = tab === 'past';
 
-    // Organize into sections
-    const activeTasks = allTasks.filter(t => t.status === 'active');
-    const queuedTasks = allTasks.filter(t => t.status === 'waiting' || t.status === 'queued');
-    const completedTasks = this.taskHistory
-      .filter(t => t.status === 'completed' || t.status === 'failed')
-      .slice(0, 5); // Only show last 5 completed
+    // Filter by tab
+    let filtered;
+    if (isPastTab) {
+      // Past tab: completed/failed from both assignees
+      filtered = Array.from(this.tasks.values())
+        .filter(t => ['completed', 'failed'].includes(t.status));
+    } else {
+      // My Tasks / Jarvis's: only active (non-completed) tasks for that assignee
+      filtered = Array.from(this.tasks.values())
+        .filter(t => t.assignee === tab && !['completed', 'failed'].includes(t.status));
 
-    // Sort by time
-    activeTasks.sort((a, b) => b.startTime - a.startTime);
-    queuedTasks.sort((a, b) => b.startTime - a.startTime);
-    completedTasks.sort((a, b) => (b.endTime || 0) - (a.endTime || 0));
+      // Filter by status
+      if (status !== 'all') {
+        filtered = filtered.filter(t => t.status === status);
+      }
+    }
+
+    // Filter by priority
+    if (priority !== 'all') {
+      filtered = filtered.filter(t => t.priority === priority);
+    }
+
+    // Sort
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+    filtered.sort((a, b) => {
+      if (isPastTab) return (b.endTime || b.updatedAt || 0) - (a.endTime || a.updatedAt || 0);
+      if (sortBy === 'priority') return (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+      if (sortBy === 'dueDate') return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
+      return (b[sortBy] || 0) - (a[sortBy] || 0);
+    });
 
     let html = '';
 
-    // Active section
-    if (activeTasks.length > 0) {
-      html += '<div class="task-section">';
-      html += '<div class="task-section-header">';
-      html += '<span class="section-title">Active</span>';
-      html += `<span class="section-count">${activeTasks.length}</span>`;
-      html += '</div>';
-      html += activeTasks.map(task => this.renderTaskItem(task)).join('');
-      html += '</div>';
+    if (isPastTab) {
+      // Past tab: group by completed vs failed, show more
+      const completedTasks = filtered.filter(t => t.status === 'completed').slice(0, 50);
+      const failedTasks = filtered.filter(t => t.status === 'failed').slice(0, 20);
+      if (completedTasks.length > 0) {
+        html += this.renderTaskSection('Completed', completedTasks);
+      }
+      if (failedTasks.length > 0) {
+        html += this.renderTaskSection('Failed', failedTasks);
+      }
+    } else {
+      // Active tabs: group by status
+      const active = filtered.filter(t => ['active', 'in_progress'].includes(t.status));
+      const pending = filtered.filter(t => ['pending', 'waiting'].includes(t.status));
+      if (active.length > 0) {
+        html += this.renderTaskSection('In Progress', active);
+      }
+      if (pending.length > 0) {
+        html += this.renderTaskSection('Pending', pending);
+      }
     }
 
-    // Queued section
-    if (queuedTasks.length > 0) {
-      html += '<div class="task-section">';
-      html += '<div class="task-section-header">';
-      html += '<span class="section-title">Queued</span>';
-      html += `<span class="section-count">${queuedTasks.length}</span>`;
-      html += '</div>';
-      html += queuedTasks.map(task => this.renderTaskItem(task)).join('');
-      html += '</div>';
-    }
-
-    // Recently completed section
-    if (completedTasks.length > 0) {
-      html += '<div class="task-section completed-section">';
-      html += '<div class="task-section-header">';
-      html += '<span class="section-title">Recently Completed</span>';
-      html += `<span class="section-count">${completedTasks.length}</span>`;
-      html += '</div>';
-      html += completedTasks.map(task => this.renderTaskItem(task)).join('');
-      html += '</div>';
-    }
-
-    // Empty state
-    if (html === '') {
-      html = '<div class="empty-state" style="text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 13px;">No tasks yet. Tasks will appear here as you work.</div>';
+    if (!html) {
+      const emptyMsg = isPastTab
+        ? 'No past tasks yet.'
+        : `No ${tab === 'user' ? 'my' : "Jarvis's"} tasks yet. Click + to create one.`;
+      html = `<div class="empty-state" style="text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 13px;">${emptyMsg}</div>`;
     }
 
     taskListEl.innerHTML = html;
+    this.bindTaskListEvents(taskListEl);
+  }
 
-    // Add click handlers
-    taskListEl.querySelectorAll('.task-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const taskId = item.dataset.taskId;
-        const task = this.activeTasks.get(taskId) || this.manualTasks.get(taskId) ||
-          this.taskHistory.find(t => t.id === taskId);
-        if (task && task.chatId) {
-          this.selectChat(task.chatId);
-        }
-      });
-    });
+  renderTaskSection(title, tasks) {
+    let html = '<div class="task-section">';
+    html += '<div class="task-section-header">';
+    html += `<span class="section-title">${title}</span>`;
+    html += `<span class="section-count">${tasks.length}</span>`;
+    html += '</div>';
+    html += tasks.map(task => this.renderTaskItem(task)).join('');
+    html += '</div>';
+    return html;
   }
 
   renderTaskItem(task) {
     const duration = task.endTime
-      ? this.formatDuration(task.endTime - task.startTime)
-      : this.formatDuration(Date.now() - task.startTime);
+      ? this.formatDuration(task.endTime - (task.startTime || task.createdAt))
+      : (task.startTime ? this.formatDuration(Date.now() - task.startTime) : '');
 
-    const statusIcon = {
-      'active': '🔄',
-      'waiting': '⏸',
-      'queued': '⏸',
-      'completed': '✓',
-      'failed': '✗'
-    }[task.status] || '•';
+    const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() &&
+      !['completed', 'failed'].includes(task.status);
 
-    const statusClass = task.status === 'failed' ? 'failed' : task.status;
+    const subtaskProgress = task.subtasks && task.subtasks.length > 0
+      ? `<span class="subtask-progress">${task.subtasks.filter(s => s.status === 'completed').length}/${task.subtasks.length}</span>`
+      : '';
+
+    const isChecked = task.status === 'completed';
+    const isUserTask = task.assignee === 'user';
+
+    const statusIcon = isUserTask
+      ? `<input type="checkbox" class="task-check" ${isChecked ? 'checked' : ''} title="${isChecked ? 'Mark incomplete' : 'Mark complete'}">`
+      : ({
+          'pending': '\u25CB', 'active': '\u25C9', 'in_progress': '\u25C9',
+          'waiting': '\u25CE', 'completed': '\u2713', 'failed': '\u2717'
+        }[task.status] || '\u2022');
+
+    const tagChips = (task.tags || []).slice(0, 3).map(t =>
+      `<span class="tag-chip">${this.escapeHtml(t)}</span>`
+    ).join('');
 
     return `
-      <div class="task-item ${statusClass}" data-task-id="${task.id}">
+      <div class="task-item ${task.status} priority-${task.priority} ${isOverdue ? 'overdue' : ''}" data-task-id="${task.id}" data-assignee="${task.assignee}">
+        <div class="task-priority-bar"></div>
         <div class="task-status-icon">${statusIcon}</div>
         <div class="task-content">
           <div class="task-title">${this.escapeHtml(task.title)}</div>
           <div class="task-meta">
-            <span class="task-type">${task.type}</span>
-            <span class="task-duration">${duration}</span>
+            ${this.taskFilter.tab === 'past' ? `<span class="task-assignee-label">${task.assignee === 'user' ? 'Mine' : 'Jarvis'}</span>` : ''}
+            ${task.dueDate ? `<span class="task-due ${isOverdue ? 'overdue' : ''}">${task.dueDate}</span>` : ''}
+            ${subtaskProgress}
+            ${duration ? `<span class="task-duration">${duration}</span>` : ''}
           </div>
+          ${tagChips ? `<div class="task-tags">${tagChips}</div>` : ''}
         </div>
       </div>
     `;
   }
 
+  bindTaskListEvents(container) {
+    container.querySelectorAll('.task-item').forEach(item => {
+      // Checkbox for checking off user tasks
+      const checkbox = item.querySelector('.task-check');
+      if (checkbox) {
+        checkbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const taskId = item.dataset.taskId;
+          const task = this.tasks.get(taskId);
+          if (!task) return;
+          if (checkbox.checked) {
+            this.completeTask(taskId, { success: true });
+          } else {
+            // Uncheck — revert to pending
+            this.updateTask(taskId, { status: 'pending', endTime: null, result: null });
+          }
+        });
+      }
+      // Click anywhere else opens detail
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('task-check')) return;
+        this.openTaskDetail(item.dataset.taskId);
+      });
+    });
+  }
+
+  // ========================================
+  // TASK DETAIL VIEW
+  // ========================================
+
+  openTaskDetail(taskId) {
+    const task = this.tasks.get(taskId);
+    if (!task) return;
+    this.currentDetailTaskId = taskId;
+    const modal = document.getElementById('taskDetailModal');
+    if (modal) {
+      this.renderTaskDetail(task);
+      modal.classList.add('open');
+    }
+  }
+
+  closeTaskDetail() {
+    const modal = document.getElementById('taskDetailModal');
+    if (modal) modal.classList.remove('open');
+    this.currentDetailTaskId = null;
+  }
+
+  renderTaskDetail(task) {
+    const titleEl = document.getElementById('taskDetailTitle');
+    const bodyEl = document.getElementById('taskDetailBody');
+    if (!bodyEl) return;
+
+    if (titleEl) titleEl.textContent = task.assignee === 'user' ? 'My Task' : "Jarvis's Task";
+
+    const priorityOptions = ['low', 'medium', 'high', 'urgent'].map(p =>
+      `<option value="${p}" ${task.priority === p ? 'selected' : ''}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>`
+    ).join('');
+
+    const statusOptions = ['pending', 'active', 'in_progress', 'waiting', 'completed', 'failed'].map(s =>
+      `<option value="${s}" ${task.status === s ? 'selected' : ''}>${s.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>`
+    ).join('');
+
+    const subtasksHtml = (task.subtasks || []).map(sub => `
+      <div class="task-subtask-item" data-subtask-id="${sub.id}">
+        <input type="checkbox" ${sub.status === 'completed' ? 'checked' : ''} class="subtask-checkbox">
+        <span class="subtask-title ${sub.status === 'completed' ? 'completed' : ''}">${this.escapeHtml(sub.title)}</span>
+        <button class="subtask-remove" title="Remove">&times;</button>
+      </div>
+    `).join('');
+
+    const notesHtml = (task.notes || []).map(note => `
+      <div class="task-note">
+        <div class="task-note-header">
+          <span class="task-note-author">${note.author === 'jarvis' ? 'Jarvis' : 'You'}</span>
+          <span class="task-note-time">${new Date(note.timestamp).toLocaleString()}</span>
+        </div>
+        <div class="task-note-text">${this.escapeHtml(note.text)}</div>
+      </div>
+    `).join('');
+
+    const tagsValue = (task.tags || []).join(', ');
+
+    bodyEl.innerHTML = `
+      <div class="task-detail-section">
+        <label>Title</label>
+        <input type="text" id="detailTitle" value="${this.escapeHtml(task.title)}" class="task-detail-input">
+      </div>
+      <div class="task-detail-section">
+        <label>Description</label>
+        <textarea id="detailDescription" rows="3" class="task-detail-input">${this.escapeHtml(task.description || '')}</textarea>
+      </div>
+      <div class="form-row">
+        <div class="task-detail-section">
+          <label>Status</label>
+          <select id="detailStatus" class="task-detail-input">${statusOptions}</select>
+        </div>
+        <div class="task-detail-section">
+          <label>Priority</label>
+          <select id="detailPriority" class="task-detail-input">${priorityOptions}</select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="task-detail-section">
+          <label>Due Date</label>
+          <input type="date" id="detailDueDate" value="${task.dueDate || ''}" class="task-detail-input">
+        </div>
+        <div class="task-detail-section">
+          <label>Recurrence</label>
+          <select id="detailRecurrence" class="task-detail-input">
+            <option value="none" ${task.recurrence === 'none' ? 'selected' : ''}>None</option>
+            <option value="daily" ${task.recurrence === 'daily' ? 'selected' : ''}>Daily</option>
+            <option value="weekly" ${task.recurrence === 'weekly' ? 'selected' : ''}>Weekly</option>
+          </select>
+        </div>
+      </div>
+      <div class="task-detail-section">
+        <label>Tags</label>
+        <input type="text" id="detailTags" value="${this.escapeHtml(tagsValue)}" class="task-detail-input" placeholder="comma-separated">
+      </div>
+      <div class="task-detail-section">
+        <label>Subtasks</label>
+        <div class="subtask-list" id="detailSubtasks">
+          ${subtasksHtml || '<div class="empty-hint">No subtasks</div>'}
+        </div>
+        <div class="subtask-add">
+          <input type="text" id="newSubtaskInput" placeholder="Add subtask..." class="task-detail-input">
+          <button class="add-subtask-btn" id="addSubtaskBtn">+</button>
+        </div>
+      </div>
+      <div class="task-detail-section">
+        <label>Notes</label>
+        <div class="notes-list" id="detailNotes">
+          ${notesHtml || '<div class="empty-hint">No notes</div>'}
+        </div>
+        <div class="note-add">
+          <input type="text" id="newNoteInput" placeholder="Add note..." class="task-detail-input">
+          <button class="add-note-btn" id="addNoteBtn">+</button>
+        </div>
+      </div>
+      ${task.createdAt ? `<div class="task-detail-meta">Created: ${new Date(task.createdAt).toLocaleString()}</div>` : ''}
+      ${task.startTime ? `<div class="task-detail-meta">Started: ${new Date(task.startTime).toLocaleString()}</div>` : ''}
+      ${task.endTime ? `<div class="task-detail-meta">Finished: ${new Date(task.endTime).toLocaleString()}</div>` : ''}
+    `;
+
+    // Bind detail events
+    this.bindTaskDetailEvents(task.id);
+  }
+
+  bindTaskDetailEvents(taskId) {
+    const addSubBtn = document.getElementById('addSubtaskBtn');
+    const newSubInput = document.getElementById('newSubtaskInput');
+    if (addSubBtn && newSubInput) {
+      addSubBtn.addEventListener('click', () => {
+        const title = newSubInput.value.trim();
+        if (title) {
+          this.addSubtask(taskId, title);
+          newSubInput.value = '';
+        }
+      });
+      newSubInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { addSubBtn.click(); e.preventDefault(); }
+      });
+    }
+
+    const addNoteBtn = document.getElementById('addNoteBtn');
+    const newNoteInput = document.getElementById('newNoteInput');
+    if (addNoteBtn && newNoteInput) {
+      addNoteBtn.addEventListener('click', () => {
+        const text = newNoteInput.value.trim();
+        if (text) {
+          this.addTaskNote(taskId, text, 'user');
+          newNoteInput.value = '';
+        }
+      });
+      newNoteInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { addNoteBtn.click(); e.preventDefault(); }
+      });
+    }
+
+    // Subtask checkboxes and remove buttons
+    const subtaskList = document.getElementById('detailSubtasks');
+    if (subtaskList) {
+      subtaskList.querySelectorAll('.subtask-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const subId = cb.closest('.task-subtask-item').dataset.subtaskId;
+          this.toggleSubtask(taskId, subId);
+        });
+      });
+      subtaskList.querySelectorAll('.subtask-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const subId = btn.closest('.task-subtask-item').dataset.subtaskId;
+          this.removeSubtask(taskId, subId);
+        });
+      });
+    }
+  }
+
+  saveTaskDetail() {
+    const taskId = this.currentDetailTaskId;
+    if (!taskId) return;
+
+    const title = document.getElementById('detailTitle')?.value.trim();
+    const description = document.getElementById('detailDescription')?.value.trim();
+    const status = document.getElementById('detailStatus')?.value;
+    const priority = document.getElementById('detailPriority')?.value;
+    const dueDate = document.getElementById('detailDueDate')?.value || null;
+    const recurrence = document.getElementById('detailRecurrence')?.value;
+    const tagsRaw = document.getElementById('detailTags')?.value || '';
+    const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+
+    if (!title) return;
+
+    this.updateTask(taskId, { title, description, status, priority, dueDate, recurrence, tags });
+    this.closeTaskDetail();
+  }
+
   formatDuration(ms) {
+    if (ms < 0) ms = 0;
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -7014,6 +7421,95 @@ Return this exact JSON structure:
     if (hours > 0) return `${hours}h ${minutes % 60}m`;
     if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
     return `${seconds}s`;
+  }
+
+  // ========================================
+  // JARVIS TASK INTEGRATION
+  // ========================================
+
+  buildTaskContext() {
+    const activeTasks = [];
+    for (const task of this.tasks.values()) {
+      if (['pending', 'active', 'in_progress', 'waiting'].includes(task.status)) {
+        activeTasks.push(task);
+      }
+    }
+    if (activeTasks.length === 0) return null;
+
+    return activeTasks.map(t => {
+      let line = `- [${t.assignee === 'user' ? 'My Task' : 'Jarvis Task'}] "${t.title}" (${t.status}, ${t.priority})`;
+      if (t.dueDate) line += ` due:${t.dueDate}`;
+      if (t.description) line += ` - ${t.description.substring(0, 100)}`;
+      if (t.subtasks && t.subtasks.length > 0) {
+        const done = t.subtasks.filter(s => s.status === 'completed').length;
+        line += ` [${done}/${t.subtasks.length} subtasks]`;
+      }
+      return line;
+    }).join('\n');
+  }
+
+  syncTasksToMemory() {
+    if (!this.fileMemoryStorage || typeof this.fileMemoryStorage.writeMessage !== 'function') return;
+    try {
+      const activeTasks = Array.from(this.tasks.values()).filter(t =>
+        ['pending', 'active', 'in_progress', 'waiting'].includes(t.status)
+      );
+      const taskSnapshot = {
+        id: `tasks-snapshot-${Date.now()}`,
+        chatId: '__tasks__',
+        chatTitle: 'Task Management',
+        role: 'system',
+        content: JSON.stringify({ type: 'task_sync', tasks: activeTasks }),
+        timestamp: Date.now()
+      };
+      this.fileMemoryStorage.writeMessage(taskSnapshot);
+    } catch (e) {
+      console.warn('Failed to sync tasks to memory:', e);
+    }
+  }
+
+  parseJarvisTaskCommands(text) {
+    const cmdRegex = /\[TASK:(\w+):(.*?)\]/g;
+    let match;
+    while ((match = cmdRegex.exec(text)) !== null) {
+      const action = match[1];
+      try {
+        const payload = JSON.parse(match[2]);
+        this.handleJarvisTaskCommand(action, payload);
+      } catch (e) {
+        console.warn('Invalid task command from Jarvis:', match[0]);
+      }
+    }
+  }
+
+  handleJarvisTaskCommand(action, payload) {
+    switch (action) {
+      case 'create':
+        this.createTask({ ...payload, assignee: payload.assignee || 'user' });
+        this.showToast(`Jarvis created task: ${payload.title}`);
+        break;
+      case 'update':
+        if (payload.id) this.updateTask(payload.id, payload);
+        break;
+      case 'complete':
+        if (payload.id) this.completeTask(payload.id, { success: true });
+        break;
+      case 'note':
+        if (payload.id) this.addTaskNote(payload.id, payload.text, 'jarvis');
+        break;
+    }
+  }
+
+  showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'task-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add('visible'), 10);
+    setTimeout(() => {
+      toast.classList.remove('visible');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
   }
 
   // ========================================
@@ -7057,7 +7553,7 @@ Return this exact JSON structure:
       const messageCount = chat.messages?.length || 0;
       const lastUpdate = chat.updatedAt ? this.formatRelativeTime(chat.updatedAt) : 'Never';
 
-      const chatTasks = Array.from(this.manualTasks.values()).filter(t => t.chatId === id && t.status !== 'completed');
+      const chatTasks = Array.from(this.tasks.values()).filter(t => t.chatId === id && !['completed', 'failed'].includes(t.status));
       const taskBadge = chatTasks.length > 0 ?
         `<span class="task-badge ${chatTasks[0].status}"></span>` : '';
 
@@ -7117,6 +7613,9 @@ Return this exact JSON structure:
     const modal = document.getElementById('taskModal');
     if (modal) {
       modal.classList.add('open');
+      // Pre-select assignee based on current tab
+      const assigneeSelect = document.getElementById('taskAssignee');
+      if (assigneeSelect) assigneeSelect.value = this.taskFilter.tab;
       const titleInput = document.getElementById('taskTitle');
       if (titleInput) titleInput.focus();
     }
@@ -7127,12 +7626,10 @@ Return this exact JSON structure:
     if (modal) {
       modal.classList.remove('open');
       // Reset form
-      const titleInput = document.getElementById('taskTitle');
-      const descInput = document.getElementById('taskDescription');
-      const statusSelect = document.getElementById('taskStatus');
-      if (titleInput) titleInput.value = '';
-      if (descInput) descInput.value = '';
-      if (statusSelect) statusSelect.value = 'active';
+      const fields = ['taskTitle', 'taskDescription', 'taskTags', 'taskDueDate'];
+      fields.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      const selects = { taskStatus: 'pending', taskPriority: 'medium', taskAssignee: 'user', taskRecurrence: 'none' };
+      Object.entries(selects).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
     }
   }
 
@@ -7140,6 +7637,12 @@ Return this exact JSON structure:
     const title = document.getElementById('taskTitle')?.value.trim();
     const description = document.getElementById('taskDescription')?.value.trim();
     const status = document.getElementById('taskStatus')?.value;
+    const assignee = document.getElementById('taskAssignee')?.value || 'user';
+    const priority = document.getElementById('taskPriority')?.value || 'medium';
+    const dueDate = document.getElementById('taskDueDate')?.value || null;
+    const recurrence = document.getElementById('taskRecurrence')?.value || 'none';
+    const tagsRaw = document.getElementById('taskTags')?.value || '';
+    const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
 
     if (!title) {
       alert('Please enter a task title');
@@ -7148,11 +7651,15 @@ Return this exact JSON structure:
 
     this.createTask({
       type: 'manual',
-      title: title,
-      status: status,
-      metadata: {
-        description: description
-      }
+      title,
+      description,
+      status,
+      assignee,
+      priority,
+      dueDate,
+      recurrence,
+      recurrenceConfig: recurrence !== 'none' ? { nextDue: dueDate } : null,
+      tags
     });
 
     this.closeTaskModal();

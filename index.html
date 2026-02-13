@@ -44,11 +44,35 @@
     <!-- Left Panel: Task Tracking -->
     <div class="panel panel-left">
       <div class="panel-header">
-        <span>Active Tasks</span>
+        <div class="task-tabs">
+          <button class="task-tab active" data-tab="user">My Tasks</button>
+          <button class="task-tab" data-tab="jarvis">Jarvis's</button>
+          <button class="task-tab" data-tab="past">Past</button>
+        </div>
         <button class="create-task-btn" id="createTaskBtn">+</button>
       </div>
+      <div class="task-toolbar">
+        <select class="task-filter-select" id="taskFilterStatus">
+          <option value="all">All</option>
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="waiting">Waiting</option>
+        </select>
+        <select class="task-filter-select" id="taskFilterPriority">
+          <option value="all">Priority</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select class="task-filter-select" id="taskSort">
+          <option value="updatedAt">Recent</option>
+          <option value="priority">Priority</option>
+          <option value="dueDate">Due Date</option>
+        </select>
+      </div>
       <div class="task-list" id="taskList">
-        <div class="empty-state">No active tasks</div>
+        <div class="empty-state">No tasks yet</div>
       </div>
     </div>
 
@@ -343,31 +367,85 @@
 
   <!-- Task Modal -->
   <div class="modal" id="taskModal">
-    <div class="modal-content modal-small">
+    <div class="modal-content modal-task">
       <div class="modal-header">
-        <h2>Create Task</h2>
+        <h2 id="taskModalTitle">Create Task</h2>
         <button class="close-btn" id="closeTaskModal">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label for="taskTitle">Task Title *</label>
-          <input type="text" id="taskTitle" placeholder="Enter task name...">
+          <label for="taskTitle">Title *</label>
+          <input type="text" id="taskTitle" placeholder="Task name...">
         </div>
         <div class="form-group">
-          <label for="taskDescription">Description (Optional)</label>
-          <textarea id="taskDescription" rows="4" placeholder="Task details..."></textarea>
+          <label for="taskDescription">Description</label>
+          <textarea id="taskDescription" rows="3" placeholder="Details..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskAssignee">Assignee</label>
+            <select id="taskAssignee">
+              <option value="user">Me</option>
+              <option value="jarvis">Jarvis</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="taskPriority">Priority</label>
+            <select id="taskPriority">
+              <option value="low">Low</option>
+              <option value="medium" selected>Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="taskStatus">Status</label>
+            <select id="taskStatus">
+              <option value="pending">Pending</option>
+              <option value="active">Active</option>
+              <option value="waiting">Waiting</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="taskDueDate">Due Date</label>
+            <input type="date" id="taskDueDate">
+          </div>
+          <div class="form-group">
+            <label for="taskRecurrence">Recurrence</label>
+            <select id="taskRecurrence">
+              <option value="none">None</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
         </div>
         <div class="form-group">
-          <label for="taskStatus">Status</label>
-          <select id="taskStatus">
-            <option value="active">Active</option>
-            <option value="waiting">Waiting</option>
-          </select>
+          <label for="taskTags">Tags (comma-separated)</label>
+          <input type="text" id="taskTags" placeholder="work, personal, urgent...">
         </div>
       </div>
       <div class="modal-footer">
         <button class="cancel-btn" id="cancelTask">Cancel</button>
         <button class="save-btn" id="saveTask">Create Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Detail Modal -->
+  <div class="modal" id="taskDetailModal">
+    <div class="modal-content modal-task-detail">
+      <div class="modal-header">
+        <h2 id="taskDetailTitle">Task Details</h2>
+        <button class="close-btn" id="closeTaskDetail">&times;</button>
+      </div>
+      <div class="modal-body" id="taskDetailBody">
+        <!-- Dynamically rendered -->
+      </div>
+      <div class="modal-footer">
+        <button class="cancel-btn" id="deleteTaskBtn">Delete</button>
+        <button class="save-btn" id="saveTaskDetailBtn">Save Changes</button>
       </div>
     </div>
   </div>
@@ -666,6 +744,7 @@
   <script src="chat-storage.js"></script>
   <script src="file-memory-storage.js"></script>
   <script src="memory-storage.js"></script>
+  <script src="task-storage.js"></script>
   <script src="jarvis-visualization.js"></script>
   <script src="app.js"></script>
 </body>
