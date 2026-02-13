@@ -185,9 +185,29 @@ python3 -m http.server 8080
 
 Want to access Jarvis UI from anywhere? Deploy to Vercel for free!
 
-### Quick Deploy
+### Deploy from Your Repository
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/jarvis-ui)
+**Option 1: Using Vercel CLI (Recommended)**
+
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Deploy from your project directory
+cd ~/jarvis-ui
+vercel
+
+# Follow the prompts - Vercel will auto-detect it's a static site
+```
+
+**Option 2: Using Vercel Dashboard**
+
+1. Go to [vercel.com/new](https://vercel.com/new)
+2. Click "Import Git Repository"
+3. Select your GitHub repository (`invite-jarvis/jarvis-ui`)
+4. Click "Deploy" (all defaults should work)
+
+Your app will be live at `https://jarvis-ui-<random>.vercel.app`
 
 ### Setup After Deployment
 
