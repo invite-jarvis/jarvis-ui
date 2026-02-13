@@ -140,9 +140,17 @@ class ClawGPT {
                 params: {
                   minProtocol: 3,
                   maxProtocol: 3,
-                  client: { id: 'clawgpt-probe', version: '0.1.0' },
+                  client: { 
+                    id: 'clawgpt-probe', 
+                    version: '0.1.0',
+                    platform: 'web',
+                    mode: 'ui'
+                  },
                   role: 'operator',
                   scopes: [],
+                  caps: [],
+                  commands: [],
+                  permissions: {},
                   auth: {}
                 }
               }));
@@ -1843,9 +1851,17 @@ window.CLAWGPT_CONFIG = {
       params: {
         minProtocol: 3,
         maxProtocol: 3,
-        client: { id: 'clawgpt-mobile', version: '0.1.0' },
+        client: { 
+          id: 'clawgpt-mobile', 
+          version: '0.1.0',
+          platform: 'web',
+          mode: 'ui'
+        },
         role: 'operator',
         scopes: [],
+        caps: [],
+        commands: [],
+        permissions: {},
         auth: { token: this.authToken }
       }
     });
