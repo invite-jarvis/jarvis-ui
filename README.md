@@ -179,6 +179,42 @@ cd ~/clawgpt
 python3 -m http.server 8080
 ```
 
+---
+
+## 🌐 Cloud Deployment (Vercel)
+
+Want to access Jarvis UI from anywhere? Deploy to Vercel for free!
+
+### Quick Deploy
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/jarvis-ui)
+
+### Setup After Deployment
+
+1. **Configure CORS** - Allow your Vercel domain:
+   ```bash
+   openclaw config set gateway.controlUi.allowedOrigins '["https://your-app.vercel.app"]'
+   openclaw gateway restart
+   ```
+
+2. **Connect via Relay**:
+   - On desktop: Open ClawGPT locally → Settings → Enable "Remote Access" → Show QR
+   - On phone: Visit your Vercel URL → Scan QR code
+   - Verify matching security words appear on both devices
+
+### How It Works
+
+The cloud deployment uses **Relay Mode** exclusively:
+- ✅ End-to-end encrypted connection (X25519 + XSalsa20-Poly1305)
+- ✅ Works from any network
+- ✅ Zero-knowledge relay server (can't see your messages)
+- ✅ Visual security verification
+- ✅ No cloud storage of your data
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions, troubleshooting, and architecture details.
+
+---
+
 ## ⚙️ Configuration
 
 Click the **Settings** button (gear icon) to configure:

@@ -39,6 +39,25 @@ class ClawGPT {
     }
     this.fileMemoryStorage = new FileMemoryStorage();
 
+    // Connection monitoring
+    this.connectionStartTime = null;
+    this.uptimeInterval = null;
+
+    // Token tracking enhancement
+    this.tokenHistory = [];
+    this.tokenRateWindow = 60000; // 1 minute window
+
+    // Task tracking
+    this.activeTasks = new Map();
+    this.taskHistory = [];
+    this.manualTasks = new Map();
+    this.taskIdCounter = 0;
+    this.currentMessageTaskId = null;
+    this.taskUpdateInterval = null;
+
+    // Jarvis holographic visualization
+    this.jarvisViz = null;
+
     this.loadSettings();
     this.initUI();
 
@@ -49,6 +68,9 @@ class ClawGPT {
   async init() {
     await this.loadChats();
     this.renderChatList();
+
+    // Initialize task storage
+    await this.initTaskStorage();
 
     // Sync existing chats to clawgpt-memory (background)
     this.syncMemoryStorage();
@@ -111,6 +133,12 @@ class ClawGPT {
 
   // Try to connect without auth - returns true if gateway accepts unauthenticated connections
   async tryConnectWithoutAuth() {
+    // In production mode, skip WebSocket test - relay only
+    if (this.productionMode || this.relayRequired) {
+      console.log('🌐 Production mode: skipping direct WebSocket test');
+      return false;
+    }
+
     return new Promise((resolve) => {
       const testUrl = this.gatewayUrl || 'ws://127.0.0.1:18789';
       let ws;
@@ -216,6 +244,18 @@ class ClawGPT {
       this.smartSearch = true;
       this.semanticSearch = false;
       this.showTokens = true;
+    }
+
+    // Production mode handling - force relay if gateway is set to 'relay'
+    if (this.gatewayUrl === 'relay' || (config.isProduction && !this.gatewayUrl)) {
+      this.productionMode = true;
+      this.relayRequired = true;
+      console.log('🌐 Production mode: relay connections required');
+
+      // Set relay server from config
+      if (config.relayServer) {
+        this.relayServerUrl = config.relayServer;
+      }
     }
 
     // Log if using config.js
@@ -515,11 +555,81 @@ class ClawGPT {
 
   // Setup Wizard
   showSetupWizard() {
+    // Check if we're in production mode
+    if (this.productionMode) {
+      this.showProductionSetup();
+      return;
+    }
+
     const modal = document.getElementById('setupModal');
     if (!modal) return;
 
     modal.classList.add('open');
     this.initSetupWizard();
+  }
+
+  showProductionSetup() {
+    const modal = document.getElementById('setupModal');
+    if (!modal) return;
+
+    const modalBody = modal.querySelector('.modal-body');
+    if (modalBody) {
+      modalBody.innerHTML = `
+        <p class="setup-intro">Welcome! This is a cloud deployment of Jarvis UI.</p>
+
+        <div class="setup-step-box">
+          <div class="setup-step-header">
+            <span class="setup-step-number">1</span>
+            <span class="setup-step-title">Connect via Relay Mode</span>
+          </div>
+          <div class="setup-step-content">
+            <p>Since you're accessing from the cloud, you need <strong>Relay Mode</strong> to connect to your local OpenClaw gateway.</p>
+            <p style="margin-top: 12px; color: var(--text-muted); font-size: 14px;">
+              This provides secure end-to-end encrypted access from anywhere.
+            </p>
+          </div>
+        </div>
+
+        <div class="setup-step-box">
+          <div class="setup-step-header">
+            <span class="setup-step-number">2</span>
+            <span class="setup-step-title">Set up your desktop</span>
+          </div>
+          <div class="setup-step-content">
+            <p>On your desktop where OpenClaw is running:</p>
+            <ol style="margin: 12px 0; padding-left: 20px;">
+              <li>Open ClawGPT locally (http://localhost:8080)</li>
+              <li>Go to Settings → Enable "Remote Access"</li>
+              <li>Show the QR code</li>
+              <li>Scan it with this device</li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="setup-step-box">
+          <div class="setup-step-header">
+            <span class="setup-step-number">3</span>
+            <span class="setup-step-title">Alternative: Manual Setup</span>
+          </div>
+          <div class="setup-step-content">
+            <p>You can also configure relay connection in Settings.</p>
+            <button class="data-btn" id="prodOpenSettings" style="margin-top: 8px;">
+              Open Settings
+            </button>
+          </div>
+        </div>
+      `;
+
+      const settingsBtn = modalBody.querySelector('#prodOpenSettings');
+      if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+          modal.style.display = 'none';
+          this.openSettings();
+        });
+      }
+    }
+
+    modal.style.display = 'block';
   }
 
   initSetupWizard() {
@@ -794,7 +904,19 @@ window.CLAWGPT_CONFIG = {
   addTokens(count) {
     this.tokenCount += count;
     this.saveTokenCount();
+
+    // Track for rate calculation
+    this.tokenHistory.push({
+      count: count,
+      timestamp: Date.now()
+    });
+
+    // Cleanup old entries
+    const cutoff = Date.now() - this.tokenRateWindow;
+    this.tokenHistory = this.tokenHistory.filter(h => h.timestamp > cutoff);
+
     this.updateTokenDisplay();
+    this.updateTokenRate();
   }
 
   updateTokenDisplay() {
@@ -2727,7 +2849,10 @@ window.CLAWGPT_CONFIG = {
       });
     }
 
-    this.elements.menuBtn.addEventListener('click', () => this.toggleSidebar());
+    // Sidebar removed in dashboard layout - commenting out old sidebar event listeners
+    if (this.elements.menuBtn) {
+      this.elements.menuBtn.addEventListener('click', () => this.toggleSidebar());
+    }
 
     // Sidebar overlay - close sidebar when clicking outside
     const sidebarOverlay = document.getElementById('sidebarOverlay');
@@ -2753,8 +2878,10 @@ window.CLAWGPT_CONFIG = {
       searchBtnCollapsed.addEventListener('click', () => this.openSearch());
     }
 
-    // Apply saved collapse state
-    this.applySidebarCollapseState();
+    // Apply saved collapse state (only if sidebar exists)
+    if (this.elements.sidebar) {
+      this.applySidebarCollapseState();
+    }
 
     this.elements.darkMode.addEventListener('change', (e) => {
       this.darkMode = e.target.checked;
@@ -2890,6 +3017,21 @@ window.CLAWGPT_CONFIG = {
     // Initialize search AI toggles
     this.initSearchToggles();
 
+    // Initialize Jarvis holographic visualization
+    if (document.getElementById('jarvisCanvas')) {
+      this.jarvisViz = new JarvisVisualization('jarvisCanvas');
+
+      // Handle window resize
+      window.addEventListener('resize', () => {
+        if (this.jarvisViz) this.jarvisViz.resize();
+      });
+
+      // Initial resize after a short delay to ensure container is sized
+      setTimeout(() => {
+        if (this.jarvisViz) this.jarvisViz.resize();
+      }, 100);
+    }
+
     this.elements.searchInput.addEventListener('input', (e) => {
       this.handleSearchInput(e.target.value);
     });
@@ -2952,6 +3094,35 @@ window.CLAWGPT_CONFIG = {
     this.selectedSearchIndex = -1;
     this.recentSearches = JSON.parse(localStorage.getItem('clawgpt-recent-searches') || '[]');
 
+    // File search
+    const fileSearch = document.getElementById('fileSearch');
+    if (fileSearch) {
+      fileSearch.addEventListener('input', (e) => {
+        this.filterFileGrid(e.target.value);
+      });
+    }
+
+    // Task modal
+    const createTaskBtn = document.getElementById('createTaskBtn');
+    if (createTaskBtn) {
+      createTaskBtn.addEventListener('click', () => this.openTaskModal());
+    }
+
+    const saveTask = document.getElementById('saveTask');
+    if (saveTask) {
+      saveTask.addEventListener('click', () => this.saveManualTask());
+    }
+
+    const cancelTask = document.getElementById('cancelTask');
+    if (cancelTask) {
+      cancelTask.addEventListener('click', () => this.closeTaskModal());
+    }
+
+    const closeTaskModal = document.getElementById('closeTaskModal');
+    if (closeTaskModal) {
+      closeTaskModal.addEventListener('click', () => this.closeTaskModal());
+    }
+
     // Render chat list
     this.renderChatList();
   }
@@ -2972,7 +3143,7 @@ window.CLAWGPT_CONFIG = {
   }
 
   toggleSidebar() {
-    const isOpen = this.elements.sidebar.classList.toggle('open');
+    const isOpen = this.elements.sidebar?.classList.toggle('open');
     const overlay = document.getElementById('sidebarOverlay');
     if (overlay) {
       overlay.classList.toggle('active', isOpen);
@@ -2980,7 +3151,7 @@ window.CLAWGPT_CONFIG = {
   }
 
   closeSidebar() {
-    this.elements.sidebar.classList.remove('open');
+    this.elements.sidebar?.classList.remove('open');
     const overlay = document.getElementById('sidebarOverlay');
     if (overlay) {
       overlay.classList.remove('active');
@@ -2988,14 +3159,14 @@ window.CLAWGPT_CONFIG = {
   }
 
   toggleSidebarCollapse() {
-    const isCollapsed = this.elements.sidebar.classList.toggle('collapsed');
+    const isCollapsed = this.elements.sidebar?.classList.toggle('collapsed');
     localStorage.setItem('clawgpt-sidebar-collapsed', isCollapsed ? '1' : '0');
   }
 
   applySidebarCollapseState() {
     const isCollapsed = localStorage.getItem('clawgpt-sidebar-collapsed') === '1';
     if (isCollapsed) {
-      this.elements.sidebar.classList.add('collapsed');
+      this.elements.sidebar?.classList.add('collapsed');
     }
   }
 
@@ -3006,6 +3177,35 @@ window.CLAWGPT_CONFIG = {
     this.updateSettingsForConfigMode();
     this.updateFileMemoryUI();
     this.updateLogCount();
+    this.updateProductionModeUI();
+  }
+
+  updateProductionModeUI() {
+    // Show production mode indicators
+    if (this.productionMode) {
+      const relayBadge = document.getElementById('relayRequiredBadge');
+      const normalHint = document.getElementById('relayHintNormal');
+      const prodHint = document.getElementById('relayHintProduction');
+
+      if (relayBadge) relayBadge.style.display = 'inline-block';
+      if (normalHint) normalHint.style.display = 'none';
+      if (prodHint) prodHint.style.display = 'block';
+
+      // Force relay toggle on in production
+      const relayToggle = document.getElementById('relayModeToggle');
+      if (relayToggle) {
+        relayToggle.checked = true;
+        relayToggle.disabled = true;
+      }
+
+      // Disable gateway URL input in production (relay only)
+      const gatewayInput = document.getElementById('gatewayUrl');
+      if (gatewayInput) {
+        gatewayInput.value = 'Relay Mode Only';
+        gatewayInput.disabled = true;
+        gatewayInput.placeholder = 'Direct gateway connections not available in cloud deployment';
+      }
+    }
   }
 
   updateLogCount() {
@@ -3789,6 +3989,16 @@ Example: [0, 2, 5]`;
       this.ws.onopen = () => {
         clearTimeout(connectTimeout);
         console.log('WebSocket connected');
+
+        // Start connection monitoring
+        this.connectionStartTime = Date.now();
+        this.startUptimeCounter();
+        this.updateConnectionStatus({
+          connected: true,
+          mode: 'direct',
+          url: this.gatewayUrl
+        });
+
         // Wait for challenge
       };
 
@@ -3812,6 +4022,15 @@ Example: [0, 2, 5]`;
         console.log('WebSocket closed');
         this.connected = false;
         this.lastGatewayChat = null; // Gateway context lost on disconnect
+
+        // Stop connection monitoring
+        this.stopUptimeCounter();
+        this.updateConnectionStatus({
+          connected: false,
+          mode: null,
+          url: null
+        });
+
         // Don't overwrite status if we're connected via relay
         if (!this.relayEncrypted) {
           this.setStatus('Disconnected');
@@ -4089,7 +4308,7 @@ Example: [0, 2, 5]`;
     this.renderChatList();
     this.updateTokenDisplay();
     this.elements.messageInput.focus();
-    this.elements.sidebar.classList.remove('open');
+    this.elements.sidebar?.classList.remove('open');
   }
 
   // Send /forget command to clear gateway session context
@@ -4142,7 +4361,7 @@ Example: [0, 2, 5]`;
     this.renderMessages();
     this.renderChatList();
     this.updateTokenDisplay(); // Also updates model display
-    this.elements.sidebar.classList.remove('open');
+    this.elements.sidebar?.classList.remove('open');
   }
 
   deleteChat(chatId) {
@@ -4248,6 +4467,12 @@ Example: [0, 2, 5]`;
   }
 
   renderChatList() {
+    // In dashboard layout, use file grid instead of sidebar chat list
+    if (!this.elements.chatList) {
+      this.renderFileGrid();
+      return;
+    }
+
     // Separate pinned and unpinned
     const allChats = Object.entries(this.chats);
     const pinnedChats = allChats
@@ -4475,6 +4700,13 @@ Example: [0, 2, 5]`;
 
   renderMessages() {
     const chat = this.currentChatId ? this.chats[this.currentChatId] : null;
+
+    // Toggle Jarvis visualization visibility based on message count
+    const hasMessages = chat && chat.messages.length > 0;
+    const vizContainer = document.getElementById('jarvisVisualization');
+    if (vizContainer) {
+      vizContainer.classList.toggle('dimmed', hasMessages);
+    }
 
     if (!chat || chat.messages.length === 0) {
       this.elements.welcome.style.display = 'flex';
@@ -4920,9 +5152,13 @@ Example: [0, 2, 5]`;
 
       // Don't auto-switch models - use whatever the gateway/session has configured
       // User can switch via model selector if needed
+
+      // Update model info display
+      this.updateModelInfo();
     } catch (error) {
       console.error('Failed to fetch models:', error);
       this.allModels = [];
+      this.updateModelInfo();
     }
   }
 
@@ -5006,6 +5242,9 @@ Example: [0, 2, 5]`;
     this.streaming = true;
     this.streamBuffer = '';
     this.updateStreamingUI();
+
+    // Activate Jarvis visualization
+    if (this.jarvisViz) this.jarvisViz.onProcessing();
     this.renderMessages();
 
     try {
@@ -5021,6 +5260,7 @@ Example: [0, 2, 5]`;
       console.error('Resend failed:', error);
       this.streaming = false;
       this.updateStreamingUI();
+      if (this.jarvisViz) this.jarvisViz.onIdle();
     }
   }
 
@@ -5215,6 +5455,8 @@ Example: [0, 2, 5]`;
     } else {
       this.finalTranscript = '';
       this.elements.messageInput.placeholder = 'Listening...';
+      // Activate Jarvis visualization for voice input
+      if (this.jarvisViz) this.jarvisViz.onVoiceActive();
       try {
         this.recognition.start();
       } catch (e) {
@@ -5901,6 +6143,18 @@ Example: [0, 2, 5]`;
       };
     }
 
+    // Create task for this message
+    const taskTitle = text ? `Message: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}` : 'Image message';
+    this.currentMessageTaskId = this.createTask({
+      type: 'message_send',
+      title: taskTitle,
+      status: 'active',
+      metadata: {
+        model: this.currentModelId,
+        estimatedTokens: this.estimateTokens(text || '')
+      }
+    });
+
     // Build message content
     let messageContent = text;
     let images = null;
@@ -6011,6 +6265,9 @@ Example: [0, 2, 5]`;
     this.streaming = true;
     this.streamBuffer = '';
     this.updateStreamingUI();
+
+    // Activate Jarvis visualization
+    if (this.jarvisViz) this.jarvisViz.onProcessing();
     this.renderMessages();
 
     try {
@@ -6072,6 +6329,7 @@ Example: [0, 2, 5]`;
       console.error('Send failed:', error);
       this.streaming = false;
       this.addAssistantMessage('Error: ' + error.message);
+      if (this.jarvisViz) this.jarvisViz.onIdle();
     }
   }
 
@@ -6080,6 +6338,9 @@ Example: [0, 2, 5]`;
 
     this.streaming = false;
     this.updateStreamingUI();
+
+    // Deactivate Jarvis visualization
+    if (this.jarvisViz) this.jarvisViz.onIdle();
 
     // Save whatever we have so far
     if (this.streamBuffer) {
@@ -6131,6 +6392,17 @@ Example: [0, 2, 5]`;
       this.streamBuffer = content;
       this.updateStreamingMessage();
 
+      // Update task status during streaming
+      if (this.currentMessageTaskId) {
+        this.updateTask(this.currentMessageTaskId, {
+          status: 'active',
+          metadata: {
+            ...this.activeTasks.get(this.currentMessageTaskId)?.metadata,
+            responseLength: content?.length || 0
+          }
+        });
+      }
+
       // Forward streaming to phone (throttled to 100ms)
       if (this.relayEncrypted && this.currentChatId) {
         const now = Date.now();
@@ -6153,16 +6425,35 @@ Example: [0, 2, 5]`;
       this.streaming = false;
       this.updateStreamingUI();
 
+      // Deactivate Jarvis visualization
+      if (this.jarvisViz) this.jarvisViz.onIdle();
+
       // Use final content if available (more complete), fall back to buffer
       const finalContent = content || this.streamBuffer;
       console.log('Final content length:', finalContent?.length, 'content:', content?.substring(0, 100), 'buffer:', this.streamBuffer?.substring(0, 100));
 
       if (state === 'error') {
         this.addAssistantMessage('Error: ' + (payload.errorMessage || 'Unknown error'));
+        // Complete task with error
+        if (this.currentMessageTaskId) {
+          this.completeTask(this.currentMessageTaskId, { success: false, error: payload.errorMessage || 'Unknown error' });
+          this.currentMessageTaskId = null;
+        }
       } else if (finalContent) {
         // Track output tokens
         this.addTokens(this.estimateTokens(finalContent));
         this.addAssistantMessage(finalContent);
+        // Complete task successfully
+        if (this.currentMessageTaskId) {
+          this.completeTask(this.currentMessageTaskId, { success: true });
+          this.currentMessageTaskId = null;
+        }
+      } else if (state === 'aborted') {
+        // Complete task as aborted
+        if (this.currentMessageTaskId) {
+          this.completeTask(this.currentMessageTaskId, { success: false, error: 'Aborted' });
+          this.currentMessageTaskId = null;
+        }
       }
 
       this.streamBuffer = '';
@@ -6376,6 +6667,495 @@ Return this exact JSON structure:
     }
 
     this.pendingSummary = null;
+  }
+
+  // ========================================
+  // CONNECTION MONITORING
+  // ========================================
+
+  startUptimeCounter() {
+    this.stopUptimeCounter();
+    this.uptimeInterval = setInterval(() => {
+      this.updateUptime();
+    }, 1000);
+  }
+
+  stopUptimeCounter() {
+    if (this.uptimeInterval) {
+      clearInterval(this.uptimeInterval);
+      this.uptimeInterval = null;
+    }
+  }
+
+  updateUptime() {
+    if (!this.connectionStartTime) return;
+    const uptime = Date.now() - this.connectionStartTime;
+    const hours = Math.floor(uptime / 3600000);
+    const minutes = Math.floor((uptime % 3600000) / 60000);
+    const seconds = Math.floor((uptime % 60000) / 1000);
+
+    const uptimeEl = document.getElementById('uptime');
+    if (uptimeEl) {
+      uptimeEl.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+  }
+
+  updateConnectionStatus(status) {
+    const statusEl = document.getElementById('gatewayStatus');
+    const urlEl = document.getElementById('gatewayUrl');
+    const modeEl = document.getElementById('connectionMode');
+
+    if (statusEl) {
+      statusEl.classList.remove('connected', 'error', 'connecting');
+      if (status.connected) {
+        statusEl.classList.add('connected');
+        statusEl.querySelector('.status-text').textContent = 'Connected';
+      } else {
+        statusEl.classList.add('error');
+        statusEl.querySelector('.status-text').textContent = 'Disconnected';
+      }
+    }
+
+    if (urlEl && status.url) {
+      urlEl.textContent = status.url;
+    } else if (urlEl && !status.connected) {
+      urlEl.textContent = '--';
+    }
+
+    if (modeEl && status.mode) {
+      modeEl.textContent = status.mode === 'direct' ? 'Direct' : 'Relay';
+    } else if (modeEl && !status.connected) {
+      modeEl.textContent = '--';
+    }
+  }
+
+  // ========================================
+  // TOKEN TRACKING ENHANCEMENTS
+  // ========================================
+
+  updateTokenDisplay() {
+    // Total tokens
+    const totalEl = document.getElementById('totalTokens');
+    if (totalEl) {
+      totalEl.textContent = this.formatTokenCount(this.tokenCount);
+    }
+
+    // Current chat tokens
+    const chatEl = document.getElementById('chatTokens');
+    if (chatEl && this.currentChatId) {
+      const chat = this.chats[this.currentChatId];
+      if (chat) {
+        const total = chat.messages.reduce((sum, msg) =>
+          sum + this.estimateTokens(msg.content), 0);
+        chatEl.textContent = this.formatTokenCount(total);
+      }
+    } else if (chatEl) {
+      chatEl.textContent = '0';
+    }
+  }
+
+  updateTokenRate() {
+    const rateEl = document.getElementById('tokenRate');
+    if (!rateEl) return;
+
+    const recentTokens = this.tokenHistory.reduce((sum, h) => sum + h.count, 0);
+    const rate = Math.round(recentTokens);
+    rateEl.textContent = `${rate}/min`;
+  }
+
+  // ========================================
+  // MODEL INFO DISPLAY
+  // ========================================
+
+  updateModelInfo() {
+    // Update current model display
+    const modelEl = document.getElementById('currentModel');
+    if (modelEl && this.currentModelId) {
+      const model = this.allModels?.find(m => m.id === this.currentModelId);
+      let displayName = model?.name || this.currentModelId;
+      displayName = displayName.replace('Claude ', '').replace(' (latest)', '');
+      modelEl.textContent = displayName;
+    } else if (modelEl) {
+      modelEl.textContent = '--';
+    }
+
+    // Update model count
+    const countEl = document.getElementById('modelCount');
+    if (countEl && this.allModels) {
+      countEl.textContent = this.allModels.length.toString();
+    } else if (countEl) {
+      countEl.textContent = '0';
+    }
+  }
+
+  // ========================================
+  // TASK TRACKING SYSTEM
+  // ========================================
+
+  async initTaskStorage() {
+    try {
+      const stored = localStorage.getItem('clawgpt-tasks');
+      if (stored) {
+        const data = JSON.parse(stored);
+        this.taskHistory = data.history || [];
+
+        // Restore manual tasks
+        if (data.manualTasks) {
+          data.manualTasks.forEach(task => {
+            this.manualTasks.set(task.id, task);
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load tasks:', err);
+    }
+
+    this.renderTaskList();
+    this.renderFileGrid();
+
+    // Start task list update interval (refresh durations every 5 seconds)
+    this.startTaskListUpdates();
+  }
+
+  startTaskListUpdates() {
+    if (this.taskUpdateInterval) {
+      clearInterval(this.taskUpdateInterval);
+    }
+
+    this.taskUpdateInterval = setInterval(() => {
+      // Only re-render if there are active tasks
+      const hasActiveTasks = this.activeTasks.size > 0 ||
+        Array.from(this.manualTasks.values()).some(t => t.status !== 'completed');
+
+      if (hasActiveTasks) {
+        this.renderTaskList();
+      }
+    }, 5000); // Update every 5 seconds
+  }
+
+  saveTaskStorage() {
+    try {
+      const data = {
+        history: this.taskHistory.slice(-100),
+        manualTasks: Array.from(this.manualTasks.values())
+      };
+      localStorage.setItem('clawgpt-tasks', JSON.stringify(data));
+    } catch (err) {
+      console.error('Failed to save tasks:', err);
+    }
+  }
+
+  createTask(options) {
+    const taskId = `task-${++this.taskIdCounter}-${Date.now()}`;
+    const task = {
+      id: taskId,
+      type: options.type || 'manual',
+      status: options.status || 'active',
+      title: options.title || 'Untitled Task',
+      chatId: options.chatId || this.currentChatId,
+      startTime: Date.now(),
+      endTime: null,
+      metadata: options.metadata || {}
+    };
+
+    if (options.type === 'manual') {
+      this.manualTasks.set(taskId, task);
+    } else {
+      this.activeTasks.set(taskId, task);
+    }
+
+    this.taskHistory.unshift(task);
+    this.saveTaskStorage();
+    this.renderTaskList();
+    this.renderFileGrid();
+
+    return taskId;
+  }
+
+  updateTask(taskId, updates) {
+    let task = this.activeTasks.get(taskId) || this.manualTasks.get(taskId);
+    if (!task) return;
+
+    Object.assign(task, updates);
+
+    const historyIndex = this.taskHistory.findIndex(t => t.id === taskId);
+    if (historyIndex >= 0) {
+      this.taskHistory[historyIndex] = task;
+    }
+
+    this.saveTaskStorage();
+    this.renderTaskList();
+    this.renderFileGrid();
+  }
+
+  completeTask(taskId, result = {}) {
+    this.updateTask(taskId, {
+      status: result.success === false ? 'failed' : 'completed',
+      endTime: Date.now(),
+      result: result
+    });
+
+    if (this.activeTasks.has(taskId)) {
+      this.activeTasks.delete(taskId);
+    }
+  }
+
+  renderTaskList() {
+    const taskListEl = document.getElementById('taskList');
+    if (!taskListEl) return;
+
+    // Gather all tasks
+    const allTasks = [
+      ...Array.from(this.activeTasks.values()),
+      ...Array.from(this.manualTasks.values())
+    ];
+
+    // Organize into sections
+    const activeTasks = allTasks.filter(t => t.status === 'active');
+    const queuedTasks = allTasks.filter(t => t.status === 'waiting' || t.status === 'queued');
+    const completedTasks = this.taskHistory
+      .filter(t => t.status === 'completed' || t.status === 'failed')
+      .slice(0, 5); // Only show last 5 completed
+
+    // Sort by time
+    activeTasks.sort((a, b) => b.startTime - a.startTime);
+    queuedTasks.sort((a, b) => b.startTime - a.startTime);
+    completedTasks.sort((a, b) => (b.endTime || 0) - (a.endTime || 0));
+
+    let html = '';
+
+    // Active section
+    if (activeTasks.length > 0) {
+      html += '<div class="task-section">';
+      html += '<div class="task-section-header">';
+      html += '<span class="section-title">Active</span>';
+      html += `<span class="section-count">${activeTasks.length}</span>`;
+      html += '</div>';
+      html += activeTasks.map(task => this.renderTaskItem(task)).join('');
+      html += '</div>';
+    }
+
+    // Queued section
+    if (queuedTasks.length > 0) {
+      html += '<div class="task-section">';
+      html += '<div class="task-section-header">';
+      html += '<span class="section-title">Queued</span>';
+      html += `<span class="section-count">${queuedTasks.length}</span>`;
+      html += '</div>';
+      html += queuedTasks.map(task => this.renderTaskItem(task)).join('');
+      html += '</div>';
+    }
+
+    // Recently completed section
+    if (completedTasks.length > 0) {
+      html += '<div class="task-section completed-section">';
+      html += '<div class="task-section-header">';
+      html += '<span class="section-title">Recently Completed</span>';
+      html += `<span class="section-count">${completedTasks.length}</span>`;
+      html += '</div>';
+      html += completedTasks.map(task => this.renderTaskItem(task)).join('');
+      html += '</div>';
+    }
+
+    // Empty state
+    if (html === '') {
+      html = '<div class="empty-state" style="text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 13px;">No tasks yet. Tasks will appear here as you work.</div>';
+    }
+
+    taskListEl.innerHTML = html;
+
+    // Add click handlers
+    taskListEl.querySelectorAll('.task-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const taskId = item.dataset.taskId;
+        const task = this.activeTasks.get(taskId) || this.manualTasks.get(taskId) ||
+          this.taskHistory.find(t => t.id === taskId);
+        if (task && task.chatId) {
+          this.selectChat(task.chatId);
+        }
+      });
+    });
+  }
+
+  renderTaskItem(task) {
+    const duration = task.endTime
+      ? this.formatDuration(task.endTime - task.startTime)
+      : this.formatDuration(Date.now() - task.startTime);
+
+    const statusIcon = {
+      'active': '🔄',
+      'waiting': '⏸',
+      'queued': '⏸',
+      'completed': '✓',
+      'failed': '✗'
+    }[task.status] || '•';
+
+    const statusClass = task.status === 'failed' ? 'failed' : task.status;
+
+    return `
+      <div class="task-item ${statusClass}" data-task-id="${task.id}">
+        <div class="task-status-icon">${statusIcon}</div>
+        <div class="task-content">
+          <div class="task-title">${this.escapeHtml(task.title)}</div>
+          <div class="task-meta">
+            <span class="task-type">${task.type}</span>
+            <span class="task-duration">${duration}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  formatDuration(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+  }
+
+  // ========================================
+  // FILE MANAGEMENT VIEW
+  // ========================================
+
+  getPinnedChatIds() {
+    return Object.entries(this.chats)
+      .filter(([_, chat]) => chat.pinned)
+      .map(([id, _]) => id);
+  }
+
+  renderFileGrid() {
+    const gridEl = document.getElementById('fileGrid');
+    if (!gridEl) return;
+
+    const allChats = Object.entries(this.chats).map(([id, chat]) => ({
+      id,
+      chat,
+      pinned: false
+    }));
+
+    const pinnedIds = this.getPinnedChatIds();
+    allChats.forEach(item => {
+      item.pinned = pinnedIds.includes(item.id);
+    });
+
+    allChats.sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return (b.chat.updatedAt || 0) - (a.chat.updatedAt || 0);
+    });
+
+    if (allChats.length === 0) {
+      gridEl.innerHTML = '<div class="empty-state" style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--text-muted);">No chats yet. Start a new chat below!</div>';
+      return;
+    }
+
+    gridEl.innerHTML = allChats.map(({id, chat, pinned}) => {
+      const isActive = id === this.currentChatId;
+      const messageCount = chat.messages?.length || 0;
+      const lastUpdate = chat.updatedAt ? this.formatRelativeTime(chat.updatedAt) : 'Never';
+
+      const chatTasks = Array.from(this.manualTasks.values()).filter(t => t.chatId === id && t.status !== 'completed');
+      const taskBadge = chatTasks.length > 0 ?
+        `<span class="task-badge ${chatTasks[0].status}"></span>` : '';
+
+      return `
+        <div class="file-card ${isActive ? 'active' : ''}" data-chat-id="${id}">
+          ${taskBadge}
+          <div class="file-icon">${pinned ? '📌' : '💬'}</div>
+          <div class="file-title" title="${this.escapeHtml(chat.title)}">${this.escapeHtml(chat.title)}</div>
+          <div class="file-meta">
+            <span>${messageCount} msgs</span>
+            <span>${lastUpdate}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    gridEl.querySelectorAll('.file-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const chatId = card.dataset.chatId;
+        this.selectChat(chatId);
+      });
+    });
+  }
+
+  formatRelativeTime(timestamp) {
+    const now = Date.now();
+    const diff = now - timestamp;
+
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days < 7) return `${days}d ago`;
+
+    return new Date(timestamp).toLocaleDateString();
+  }
+
+  filterFileGrid(query) {
+    const cards = document.querySelectorAll('.file-card');
+    const lowerQuery = query.toLowerCase();
+
+    cards.forEach(card => {
+      const title = card.querySelector('.file-title').textContent.toLowerCase();
+      const matches = !query || title.includes(lowerQuery);
+      card.style.display = matches ? '' : 'none';
+    });
+  }
+
+  // ========================================
+  // TASK MODAL HANDLERS
+  // ========================================
+
+  openTaskModal() {
+    const modal = document.getElementById('taskModal');
+    if (modal) {
+      modal.classList.add('open');
+      const titleInput = document.getElementById('taskTitle');
+      if (titleInput) titleInput.focus();
+    }
+  }
+
+  closeTaskModal() {
+    const modal = document.getElementById('taskModal');
+    if (modal) {
+      modal.classList.remove('open');
+      // Reset form
+      const titleInput = document.getElementById('taskTitle');
+      const descInput = document.getElementById('taskDescription');
+      const statusSelect = document.getElementById('taskStatus');
+      if (titleInput) titleInput.value = '';
+      if (descInput) descInput.value = '';
+      if (statusSelect) statusSelect.value = 'active';
+    }
+  }
+
+  saveManualTask() {
+    const title = document.getElementById('taskTitle')?.value.trim();
+    const description = document.getElementById('taskDescription')?.value.trim();
+    const status = document.getElementById('taskStatus')?.value;
+
+    if (!title) {
+      alert('Please enter a task title');
+      return;
+    }
+
+    this.createTask({
+      type: 'manual',
+      title: title,
+      status: status,
+      metadata: {
+        description: description
+      }
+    });
+
+    this.closeTaskModal();
   }
 }
 

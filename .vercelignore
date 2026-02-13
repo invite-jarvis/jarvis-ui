@@ -1,0 +1,7 @@
+config.js
+.git/
+.DS_Store
+node_modules/
+*.log
+.claude/
+Reference/

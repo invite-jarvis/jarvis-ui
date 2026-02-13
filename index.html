@@ -13,96 +13,64 @@
   ">
   <title>ClawGPT</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=999">
   <!-- Prism.js for syntax highlighting -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" integrity="sha384-wFjoQjtV1y5jVHbt0p35Ui8aV8GVpEZkyF99OXWqP/eNJDU93D3Ugxkoyh6Y2I4A" crossorigin="anonymous">
 </head>
-<body>
-  <div class="app">
-    <!-- Sidebar overlay for mobile -->
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-    
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <button class="mobile-close-btn" id="mobileCloseBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-          <span>Close menu</span>
-        </button>
-        <button class="new-chat-btn" id="newChatBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
-          <span class="btn-text">New chat</span>
-        </button>
-        <button class="search-btn-collapsed" id="searchBtnCollapsed" title="Search chats">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-        </button>
-        <div class="sidebar-search" id="sidebarSearch">
-          <svg class="sidebar-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input type="text" id="sidebarSearchInput" placeholder="Search chats...">
-        </div>
+<body class="dashboard-layout">
+  <!-- Top: File Management View -->
+  <div class="file-manager">
+    <div class="file-manager-header">
+      <h2>Chat History</h2>
+      <div class="view-controls">
+        <button class="view-grid">Grid</button>
+        <button class="view-list active">List</button>
       </div>
-      <div class="chat-list" id="chatList">
-        <!-- Chat history items go here -->
-      </div>
-      <div class="sidebar-footer">
-        <button class="settings-btn" id="settingsBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-          <span class="btn-text">Settings</span>
-        </button>
-        <button class="help-btn" id="helpBtn" title="Keyboard shortcuts">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-            <circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"></circle>
-          </svg>
-          <span class="btn-text">Help</span>
-        </button>
-        <button class="collapse-btn" id="collapseBtn" title="Collapse sidebar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="11 17 6 12 11 7"></polyline>
-            <polyline points="18 17 13 12 18 7"></polyline>
-          </svg>
-        </button>
-      </div>
-    </aside>
+      <input type="text" class="file-search" id="fileSearch" placeholder="Search chats...">
+      <button class="settings-btn" id="settingsBtn" title="Settings" style="margin-left: auto; padding: 6px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; color: var(--text-primary);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="file-grid" id="fileGrid">
+      <!-- Chat items rendered as file cards -->
+    </div>
+  </div>
 
-    <!-- Main chat area -->
-    <main class="main">
-      <header class="header">
-        <button class="menu-btn" id="menuBtn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-        <h1 class="title">ClawGPT</h1>
-        <div class="header-info">
-          <div class="chat-model" id="chatModel" title="Current model"></div>
-          <div class="chat-tokens" id="chatTokens" title="Estimated tokens in this conversation"></div>
+  <!-- Main Dashboard Area -->
+  <div class="dashboard-container">
+    <!-- Left Panel: Task Tracking -->
+    <div class="panel panel-left">
+      <div class="panel-header">
+        <span>Active Tasks</span>
+        <button class="create-task-btn" id="createTaskBtn">+</button>
+      </div>
+      <div class="task-list" id="taskList">
+        <div class="empty-state">No active tasks</div>
+      </div>
+    </div>
+
+    <!-- Center: Chat Interface -->
+    <div class="panel panel-center">
+      <div class="chat-header">
+        <div class="chat-title-area">
+          <span id="activeChatTitle">New Chat</span>
+          <button class="new-chat-btn" id="newChatBtn">+ New</button>
         </div>
-        <div class="status" id="status">Disconnected</div>
-      </header>
+      </div>
+
+      <!-- Jarvis Holographic Visualization -->
+      <div class="jarvis-visualization-container" id="jarvisVisualization">
+        <canvas id="jarvisCanvas" class="jarvis-canvas"></canvas>
+        <div class="jarvis-pulse-ring"></div>
+      </div>
 
       <div class="messages" id="messages">
         <div class="welcome" id="welcome">
-          <h2>ClawGPT</h2>
-          <p>A familiar UI for OpenClaw with extra features</p>
+          <h2>Jarvis UI</h2>
+          <p>Your AI monitoring and task management dashboard</p>
         </div>
       </div>
 
@@ -115,9 +83,9 @@
             </svg>
           </button>
           <input type="file" id="fileInput" accept="image/*,.txt,.md,.json,.js,.ts,.py,.html,.css,.xml,.yaml,.yml,.csv,.log,.sh,.bash,.zsh,.env,.ini,.conf,.cfg,.pdf,.xlsx,.xls" multiple style="display: none;">
-          <textarea 
-            id="messageInput" 
-            placeholder="Message"
+          <textarea
+            id="messageInput"
+            placeholder="Message Jarvis..."
             rows="1"
           ></textarea>
           <button class="voice-btn" id="voiceBtn" title="Voice input">
@@ -140,9 +108,63 @@
             </svg>
           </button>
         </div>
-        <p class="disclaimer">ClawGPT connects to your local OpenClaw gateway</p>
+        <p class="disclaimer">Jarvis connects to your local OpenClaw gateway</p>
       </div>
-    </main>
+    </div>
+
+    <!-- Right Panel: Token Usage, Gateway Status & Model Info -->
+    <div class="panel panel-right">
+      <div class="panel-header">Token Usage</div>
+      <div class="token-stats">
+        <div class="stat-card">
+          <div class="stat-value" id="totalTokens">0</div>
+          <div class="stat-label">Total Tokens</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="chatTokens">0</div>
+          <div class="stat-label">This Chat</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="tokenRate">0/min</div>
+          <div class="stat-label">Rate</div>
+        </div>
+      </div>
+
+      <div class="panel-header">Gateway Status</div>
+      <div class="connection-status">
+        <div class="status-indicator" id="gatewayStatus">
+          <span class="status-dot"></span>
+          <span class="status-text">Disconnected</span>
+        </div>
+        <div class="gateway-info">
+          <div class="info-row">
+            <span class="label">URL:</span>
+            <span class="value" id="gatewayUrl">--</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Mode:</span>
+            <span class="value" id="connectionMode">--</span>
+          </div>
+          <div class="info-row">
+            <span class="label">Uptime:</span>
+            <span class="value" id="uptime">--:--:--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Model Information -->
+      <div class="panel-header">Model Info</div>
+      <div class="model-info">
+        <div class="current-model">
+          <span class="model-name" id="currentModel">--</span>
+          <button class="model-switch-btn" id="switchModel">Switch</button>
+        </div>
+        <div class="models-available">
+          <span class="label">Available:</span>
+          <span class="value" id="modelCount">0</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Search Modal -->
@@ -284,8 +306,10 @@
           <label class="relay-toggle-label">
             <input type="checkbox" id="relayModeToggle">
             <span>Remote Access (works from anywhere)</span>
+            <span id="relayRequiredBadge" style="display: none; margin-left: 8px; padding: 2px 8px; background: #3498db; color: white; border-radius: 12px; font-size: 11px; font-weight: bold;">REQUIRED</span>
           </label>
-          <span class="setting-hint">Enable to use ClawGPT on your phone from anywhere, not just your home WiFi</span>
+          <span class="setting-hint" id="relayHintNormal">Enable to use ClawGPT on your phone from anywhere, not just your home WiFi</span>
+          <span class="setting-hint" id="relayHintProduction" style="display: none; color: #3498db;">Production deployment requires relay mode for secure remote access</span>
         </div>
         <div class="form-group mobile-access">
           <div class="qr-container" id="qrContainer">
@@ -313,6 +337,37 @@
           <button class="save-btn" id="saveSettingsBtn">Save</button>
           <button class="connect-btn" id="connectBtn">Connect</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Modal -->
+  <div class="modal" id="taskModal">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h2>Create Task</h2>
+        <button class="close-btn" id="closeTaskModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="taskTitle">Task Title *</label>
+          <input type="text" id="taskTitle" placeholder="Enter task name...">
+        </div>
+        <div class="form-group">
+          <label for="taskDescription">Description (Optional)</label>
+          <textarea id="taskDescription" rows="4" placeholder="Task details..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="taskStatus">Status</label>
+          <select id="taskStatus">
+            <option value="active">Active</option>
+            <option value="waiting">Waiting</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="cancel-btn" id="cancelTask">Cancel</button>
+        <button class="save-btn" id="saveTask">Create Task</button>
       </div>
     </div>
   </div>
@@ -601,12 +656,17 @@
   <script src="lib/nacl-util.min.js"></script>
   <script src="lib/relay-crypto.js"></script>
   <script src="lib/purify.min.js"></script>
-  
+
+  <!-- Production config (committed, sets defaults for deployed version) -->
+  <script src="config.production.js"></script>
+  <!-- Optional: local config.js for default settings (gitignored) -->
   <script src="config.js" onerror="/* config.js is optional */"></script>
+
   <script src="error-handler.js"></script>
   <script src="chat-storage.js"></script>
   <script src="file-memory-storage.js"></script>
   <script src="memory-storage.js"></script>
+  <script src="jarvis-visualization.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
